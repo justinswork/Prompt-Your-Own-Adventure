@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Prompt Your Own Adventure</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Prompt Your Own Adventure</h1>
+    <div class="subtitle">A model-routed text RPG over MCP</div>
+  </header>
+
+  <main>
+    <!-- Setup screen: scenario reroll -->
+    <section id="setup-screen" class="screen">
+      <h2>Phase 1 — Roll a Universe</h2>
+      <p class="hint">The router model invents a random scenario. Reroll until something hooks you.</p>
+
+      <div id="scenario-card" class="scenario-card hidden">
+        <div class="row"><span class="label">Genre</span><span id="s-genre"></span></div>
+        <div class="row"><span class="label">Location</span><span id="s-location"></span></div>
+        <div class="row"><span class="label">Objective</span><span id="s-objective"></span></div>
+        <div class="row"><span class="label">Starting Items</span><ul id="s-items"></ul></div>
+      </div>
+
+      <div id="setup-loading" class="loading hidden">rolling new scenario…</div>
+
+      <div class="setup-actions">
+        <button id="btn-reroll">Reroll</button>
+        <button id="btn-accept" class="primary" disabled>Accept &amp; Play</button>
+      </div>
+    </section>
+
+    <!-- Game screen -->
+    <section id="game-screen" class="screen hidden">
+      <div class="status-bar">
+        <span class="stat"><span class="label">Health</span><span id="hp">100</span></span>
+        <span class="stat"><span class="label">Turn</span><span id="turn">0</span>/10</span>
+        <span class="stat grow"><span class="label">Location</span><span id="location"></span></span>
+        <span class="stat narrator-stat">
+          <span class="label">Narrator</span>
+          <select id="narrator-select"></select>
+        </span>
+      </div>
+
+      <div class="game-meta">
+        <div><span class="label">Genre:</span> <span id="genre"></span></div>
+        <div><span class="label">Objective:</span> <span id="objective"></span></div>
+        <div><span class="label">Inventory:</span> <span id="inventory"></span></div>
+      </div>
+
+      <div class="content-grid">
+        <div id="narration-pane" class="pane">
+          <h3>Narration</h3>
+          <div id="narration-log"></div>
+        </div>
+
+        <div id="telemetry-pane" class="pane">
+          <h3>⚙ Telemetry <span class="hint">live MCP + router events</span></h3>
+          <div id="telemetry-log"></div>
+        </div>
+      </div>
+
+      <form id="action-form" class="action-form">
+        <input id="action-input" type="text" autocomplete="off"
+               placeholder="What do you do?" required />
+        <button type="submit" class="primary" id="btn-submit">Submit</button>
+      </form>
+      <div id="turn-loading" class="loading hidden">resolving turn…</div>
+    </section>
+
+    <!-- Climax screen -->
+    <section id="end-screen" class="screen hidden">
+      <h2 id="end-headline"></h2>
+      <div id="end-narration" class="narration-block"></div>
+      <div id="end-stats" class="end-stats"></div>
+      <button id="btn-restart" class="primary">Play Again</button>
+    </section>
+  </main>
+
+  <footer>
+    <span>browser ↔ <code>FastAPI</code> ↔ <code>FastMCP</code> server</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
