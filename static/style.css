@@ -206,6 +206,16 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
   letter-spacing: 1px;
   margin-bottom: 4px;
 }
+#narration-log .auto-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--magenta);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
 #narration-log .turn-entry .action {
   color: var(--accent);
   font-style: italic;
@@ -251,8 +261,21 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 .action-form {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 .action-form input[type="text"] { flex: 1; }
+
+.action-form .autoplay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  padding: 0 4px;
+}
+.action-form .autoplay input { accent-color: var(--accent); }
 
 /* --- Climax / end --- */
 

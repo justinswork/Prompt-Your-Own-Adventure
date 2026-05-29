@@ -102,11 +102,12 @@ function renderState(state) {
     : "(empty)";
 }
 
-function appendNarration(turn, action, prose) {
+function appendNarration(turn, action, prose, fromAuto) {
   const div = document.createElement("div");
   div.className = "turn-entry appear";
+  const autoBadge = fromAuto ? ` <span class="auto-badge">auto</span>` : "";
   div.innerHTML = `
-    <div class="turn-tag">Turn ${turn}</div>
+    <div class="turn-tag">Turn ${turn}${autoBadge}</div>
     <div class="action">› ${escapeHtml(action)}</div>
     <div class="prose">${escapeHtml(prose)}</div>
   `;
@@ -155,26 +156,68 @@ async function streamTelemetry(events, turnNumber) {
   }
 }
 
-async function submitAction(action) {
-  setBusy("turn-loading", ["btn-submit"], true);
+async function submitAction(action, opts = {}) {
+  setBusy("turn-loading", ["btn-submit", "btn-auto"], true);
+  let ended = false;
   try {
     const resp = await jpost("/api/turn", { action });
     const turn = resp.state.player_status.turn_count;
 
     await streamTelemetry(resp.telemetry, turn);
     renderState(resp.state);
-    appendNarration(turn, action, resp.narration);
+    appendNarration(turn, action, resp.narration, opts.fromAuto);
 
-    if (resp.ended) {
+    ended = resp.ended;
+    if (ended) {
       await endGame(resp.end_reason, resp.victory);
     }
   } catch (e) {
     alert("Turn failed: " + e.message);
   } finally {
-    setBusy("turn-loading", ["btn-submit"], false);
+    setBusy("turn-loading", ["btn-submit", "btn-auto"], false);
     $("action-input").value = "";
-    $("action-input").focus();
+    if (!ended) $("action-input").focus();
   }
+  return ended;
+}
+
+async function autoAction(opts = {}) {
+  if ($("btn-submit").disabled && !opts.force) return false;
+  setBusy("turn-loading", ["btn-submit", "btn-auto"], true);
+  let action;
+  try {
+    const r = await jpost("/api/auto-action");
+    action = r.action;
+    pushAutoActionEvent(action, r.model);
+    $("action-input").value = action;
+  } catch (e) {
+    alert("Auto-action failed: " + e.message);
+    setBusy("turn-loading", ["btn-submit", "btn-auto"], false);
+    return false;
+  }
+  // brief reveal so the user sees what was chosen before it submits
+  await new Promise((r) => setTimeout(r, 350));
+  setBusy("turn-loading", ["btn-submit", "btn-auto"], false);
+  const ended = await submitAction(action, { fromAuto: true });
+
+  if (!ended && $("cb-autoplay").checked) {
+    await new Promise((r) => setTimeout(r, 700));
+    if ($("cb-autoplay").checked) await autoAction();
+  }
+  return ended;
+}
+
+function pushAutoActionEvent(action, model) {
+  const container = $("telemetry-log");
+  const block = document.createElement("div");
+  block.className = "telemetry-turn appear";
+  block.innerHTML = `
+    <div class="event router">
+      <span class="tag">[MODEL ROUTER]</span>
+      <span class="meta">auto-action ← ${escapeHtml(model)}  "${escapeHtml(action)}"</span>
+    </div>`;
+  container.appendChild(block);
+  container.scrollTop = container.scrollHeight;
 }
 
 async function swapNarrator(model) {
@@ -252,6 +295,10 @@ async function init() {
     e.preventDefault();
     const a = $("action-input").value.trim();
     if (a) submitAction(a);
+  });
+  $("btn-auto").addEventListener("click", () => autoAction());
+  $("cb-autoplay").addEventListener("change", () => {
+    if ($("cb-autoplay").checked && !$("btn-submit").disabled) autoAction();
   });
   $("btn-restart").addEventListener("click", async () => {
     currentScenario = null;

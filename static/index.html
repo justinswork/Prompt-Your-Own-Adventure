@@ -67,6 +67,11 @@
         <input id="action-input" type="text" autocomplete="off"
                placeholder="What do you do?" required />
         <button type="submit" class="primary" id="btn-submit">Submit</button>
+        <button type="button" id="btn-auto" title="Let the router model choose an action for this turn">🎲 Choose for me</button>
+        <label class="autoplay" title="Auto-generate every remaining action until the game ends">
+          <input type="checkbox" id="cb-autoplay" />
+          <span>Auto-play</span>
+        </label>
       </form>
       <div id="turn-loading" class="loading hidden">resolving turn…</div>
     </section>

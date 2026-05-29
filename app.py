@@ -39,7 +39,9 @@ except ImportError:
 from llm import (
     DEFAULT_NARRATOR,
     NARRATOR_CHOICES,
+    ROUTER_MODEL,
     RULE_ENFORCER_MODEL,
+    generate_action,
     generate_scenario,
     narrate,
     narrate_climax,
@@ -285,6 +287,17 @@ async def play_turn(req: TurnRequest, request: Request):
         "victory": victory,
         "end_reason": end_reason,
     }
+
+
+@app.post("/api/auto-action")
+async def auto_action(request: Request):
+    mcp: ClientSession = request.app.state.mcp
+    state = await mcp_get_world_state(mcp)
+    try:
+        action = await asyncio.to_thread(generate_action, state)
+    except Exception as e:
+        raise HTTPException(500, f"auto-action generation failed: {e}")
+    return {"action": action, "model": ROUTER_MODEL}
 
 
 @app.post("/api/climax")

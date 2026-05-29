@@ -188,6 +188,45 @@ def narrate(model: str, state: dict, action: str, mutation: dict, turn: int) -> 
     raise ValueError(f"Unknown narrator model: {model!r}")
 
 
+def generate_action(state: dict) -> str:
+    """Use the router model to pick a plausible player action for this state.
+
+    Used by the "Choose for me" / auto-play feature so the system can be
+    watched end-to-end without manual input.
+    """
+    client = _ensure_openai()
+    system = (
+        f"You are playing the protagonist of a {state['genre']} text RPG. "
+        "Choose ONE concrete, in-character action to attempt this turn. "
+        "Keep it to 1-2 short sentences, first person or imperative. Vary "
+        "your approach across turns — investigate, move, interact, take "
+        "risks, pursue the objective, react to threats. Describe what you "
+        "ATTEMPT, never dictate outcomes (wrong: 'I find the key'; right: "
+        "'I search behind the tapestry for the key'). Stay grounded in the "
+        "current location and inventory."
+    )
+    user = (
+        f"Current world state:\n{json.dumps(state, indent=2)}\n\n"
+        "Respond with JSON ONLY: {\"action\": \"your action here\"}"
+    )
+    resp = client.chat.completions.create(
+        model=ROUTER_MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        response_format={"type": "json_object"},
+        temperature=1.0,
+    )
+    data = json.loads(resp.choices[0].message.content)
+    action = (data.get("action") or "").strip()
+    if not action:
+        action = "I take a moment to study my surroundings."
+    if len(action) > 300:
+        action = action[:300]
+    return action
+
+
 def narrate_climax(model: str, state: dict, victory: bool, reason: str) -> str:
     """Generate the final scene at the end of the 10-turn run."""
     if victory:
