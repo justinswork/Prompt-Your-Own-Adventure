@@ -1,0 +1,11 @@
+{
+  "genre": "",
+  "current_location": "",
+  "objective": "",
+  "player_status": {
+    "health": 100,
+    "turn_count": 0
+  },
+  "inventory": [],
+  "has_objective_item": false
+}
