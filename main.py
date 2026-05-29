@@ -378,7 +378,9 @@ async def phase_setup(session: ClientSession) -> dict:
             print(f"     · {it}")
         print(f"{C.YELLOW}{'═' * 70}{C.RESET}\n")
 
-        choice = input(f"{C.BOLD}Accept and Play this setting? (y/n): {C.RESET}").strip().lower()
+        sys.stdout.write(f"{C.BOLD}Accept and Play this setting? (y/n): {C.RESET}")
+        sys.stdout.flush()
+        choice = input().strip().lower()
         if choice == "y":
             print(f"\n{C.GREEN}Sealing universe...{C.RESET}")
             state = await mcp_initialize_game(session, scenario)
@@ -414,7 +416,9 @@ async def phase_main_loop(session: ClientSession, state: dict) -> None:
             f"│ ❤ {state['player_status']['health']} "
             f"│ 📍 {state['current_location']}{C.RESET}"
         )
-        raw_action = input(f"{C.BOLD}> {C.RESET}").strip()
+        sys.stdout.write(f"{C.BOLD}> {C.RESET}")
+        sys.stdout.flush()
+        raw_action = input().strip()
         if not raw_action:
             print(f"{C.GRAY}(silence is also a choice — but pick a real action){C.RESET}\n")
             continue
