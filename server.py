@@ -148,4 +148,11 @@ def mutate_world_state(
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import sys
+
+    HOST, PORT = "127.0.0.1", 8001
+    print(
+        f"[RPG_Engine] starting MCP SSE server on http://{HOST}:{PORT}/sse",
+        file=sys.stderr,
+    )
+    mcp.run(transport="sse", host=HOST, port=PORT)

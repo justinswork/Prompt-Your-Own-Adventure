@@ -8,8 +8,10 @@
 </head>
 <body>
   <header>
-    <h1>Prompt Your Own Adventure</h1>
-    <div class="subtitle">A model-routed text RPG over MCP</div>
+    <div class="header-left">
+      <h1>Prompt Your Own Adventure</h1>
+      <div class="subtitle">A model-routed text RPG over MCP</div>
+    </div>
   </header>
 
   <main>
@@ -51,16 +53,9 @@
         <div><span class="label">Inventory:</span> <span id="inventory"></span></div>
       </div>
 
-      <div class="content-grid">
-        <div id="narration-pane" class="pane">
-          <h3>Narration</h3>
-          <div id="narration-log"></div>
-        </div>
-
-        <div id="telemetry-pane" class="pane">
-          <h3>⚙ Telemetry <span class="hint">live MCP + router events</span></h3>
-          <div id="telemetry-log"></div>
-        </div>
+      <div id="narration-pane" class="pane">
+        <h3>Narration</h3>
+        <div id="narration-log"></div>
       </div>
 
       <form id="action-form" class="action-form">
@@ -88,6 +83,67 @@
   <footer>
     <span>browser ↔ <code>FastAPI</code> ↔ <code>FastMCP</code> server</span>
   </footer>
+
+  <!-- Fixed-position MCP sidebar, peer of <main>, full viewport height -->
+  <aside id="mcp-pane" class="mcp-pane">
+    <div class="mcp-pane-header">
+      <div class="mcp-pane-title">🔌 MCP</div>
+      <button type="button" id="btn-mcp-collapse"
+              class="collapse-btn" title="Collapse the MCP pane">
+        ⟩
+      </button>
+    </div>
+
+    <div class="mcp-pane-body">
+      <div class="mcp-server-card">
+        <div class="mcp-server-row">
+          <span id="insp-server-name">RPG_Engine</span>
+          <button type="button" id="insp-refresh" class="mini-btn"
+                  title="Refresh inspector data">↻</button>
+        </div>
+        <div class="mcp-server-row dim">
+          <code id="insp-server-url">http://127.0.0.1:8001/sse</code>
+        </div>
+        <div class="mcp-server-row dim">
+          uptime <span id="insp-uptime">0</span>s ·
+          <span id="insp-call-count">0</span> calls
+        </div>
+      </div>
+
+      <details class="mcp-section" open>
+        <summary>Live Telemetry <span class="hint">router + MCP events per turn</span></summary>
+        <div id="telemetry-log"></div>
+      </details>
+
+      <details class="mcp-section">
+        <summary>Manual Tool Invoker <span class="hint">poke any tool directly</span></summary>
+        <div class="invoker">
+          <select id="insp-tool-select"></select>
+          <textarea id="insp-args" rows="3" spellcheck="false"
+                    placeholder='{"key": "value"}'></textarea>
+          <button type="button" id="insp-call" class="primary">Call</button>
+        </div>
+        <pre id="insp-result" class="invoker-result"></pre>
+      </details>
+
+      <details class="mcp-section">
+        <summary>Discovered Tools <span class="hint" id="insp-tools-count">(0)</span></summary>
+        <div id="insp-tools"></div>
+      </details>
+
+      <details class="mcp-section">
+        <summary>Recent Calls <span class="hint" id="insp-recent-count">(0)</span></summary>
+        <div id="insp-recent"></div>
+      </details>
+    </div>
+  </aside>
+
+  <button type="button" id="btn-mcp-expand"
+          class="mcp-pane-rail hidden"
+          title="Expand the MCP pane">
+    <span class="rail-icon">🔌</span>
+    <span class="rail-text">M C P</span>
+  </button>
 
   <script src="/static/app.js"></script>
 </body>

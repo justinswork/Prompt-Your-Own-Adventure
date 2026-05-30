@@ -177,6 +177,8 @@ async function submitAction(action, opts = {}) {
     setBusy("turn-loading", ["btn-submit", "btn-auto"], false);
     $("action-input").value = "";
     if (!ended) $("action-input").focus();
+    // keep inspector counters & recent-calls list current
+    refreshInspector().catch(() => {});
   }
   return ended;
 }
@@ -243,6 +245,118 @@ function pushRouterSwapEvent(model) {
   container.scrollTop = container.scrollHeight;
 }
 
+// ---------- MCP side pane ----------------------------------------------------
+
+function toggleMcpPane(forceCollapse) {
+  const rail = $("btn-mcp-expand");
+  const collapseNow = forceCollapse !== undefined
+    ? forceCollapse
+    : !document.body.classList.contains("mcp-collapsed");
+  document.body.classList.toggle("mcp-collapsed", collapseNow);
+  rail.classList.toggle("hidden", !collapseNow);
+}
+
+async function refreshInspector() {
+  let data;
+  try {
+    data = await jget("/api/mcp-inspect");
+  } catch (e) {
+    alert("MCP inspect failed: " + e.message);
+    return;
+  }
+
+  $("insp-server-name").textContent = data.server_name + " · " + data.transport;
+  $("insp-server-url").textContent = data.server_url;
+  $("insp-uptime").textContent = data.uptime_s;
+  $("insp-call-count").textContent = data.call_count;
+  $("insp-tools-count").textContent = `(${data.tools.length})`;
+  $("insp-recent-count").textContent = `(${data.recent_calls.length})`;
+
+  // Tools
+  const toolsEl = $("insp-tools");
+  toolsEl.innerHTML = "";
+  const sel = $("insp-tool-select");
+  const previousSelection = sel.value;
+  sel.innerHTML = "";
+  for (const t of data.tools) {
+    const card = document.createElement("div");
+    card.className = "tool-card";
+    card.innerHTML = `
+      <div class="tool-name">${escapeHtml(t.name)}()</div>
+      <div class="tool-desc">${escapeHtml(t.description || "(no description)")}</div>
+      <details>
+        <summary>inputSchema</summary>
+        <pre>${escapeHtml(JSON.stringify(t.inputSchema, null, 2))}</pre>
+      </details>`;
+    toolsEl.appendChild(card);
+
+    const opt = document.createElement("option");
+    opt.value = t.name;
+    opt.textContent = t.name;
+    sel.appendChild(opt);
+  }
+  if (previousSelection) sel.value = previousSelection;
+
+  // Recent calls (newest first)
+  const recentEl = $("insp-recent");
+  recentEl.innerHTML = "";
+  if (data.recent_calls.length === 0) {
+    recentEl.innerHTML = `<div class="hint">No calls yet. Play a turn or use the manual invoker.</div>`;
+  } else {
+    for (const c of [...data.recent_calls].reverse()) {
+      const row = document.createElement("div");
+      row.className = "call-row";
+      const d = new Date(c.ts * 1000);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      const msCls = !c.ok ? "err" : c.elapsed_ms > 200 ? "slow" : "";
+      const srcTag = c.source && c.source !== "orchestrator"
+        ? `<span class="src-tag">${escapeHtml(c.source)}</span>` : "";
+      const preview = c.ok
+        ? escapeHtml(JSON.stringify(c.args))
+        : escapeHtml(c.error || "(error)");
+      row.innerHTML = `
+        <span class="time">${hh}:${mm}:${ss}</span>
+        <span class="name">${escapeHtml(c.tool)}${srcTag}</span>
+        <span class="ms ${msCls}">${c.elapsed_ms}ms</span>
+        <span class="preview">${preview}</span>`;
+      recentEl.appendChild(row);
+    }
+  }
+}
+
+async function invokeManually() {
+  const tool = $("insp-tool-select").value;
+  let args;
+  try {
+    const raw = $("insp-args").value.trim() || "{}";
+    args = JSON.parse(raw);
+  } catch (e) {
+    const out = $("insp-result");
+    out.classList.add("err");
+    out.textContent = "Invalid JSON args: " + e.message;
+    return;
+  }
+  const out = $("insp-result");
+  out.classList.remove("err");
+  out.textContent = "(calling " + tool + "...)";
+  try {
+    const r = await jpost("/api/mcp-call", { tool, args });
+    if (r.ok) {
+      out.textContent = JSON.stringify(r.result, null, 2);
+    } else {
+      out.classList.add("err");
+      out.textContent = r.error;
+    }
+  } catch (e) {
+    out.classList.add("err");
+    out.textContent = e.message;
+  }
+  // refresh the recent-calls list to show the call we just made
+  await refreshInspector();
+}
+
 // ---------- Climax screen ----------------------------------------------------
 
 async function endGame(reason, _victory) {
@@ -306,6 +420,20 @@ async function init() {
     show("setup-screen");
     rerollScenario();
   });
+
+  // MCP side pane
+  $("btn-mcp-collapse").addEventListener("click", () => toggleMcpPane(true));
+  $("btn-mcp-expand").addEventListener("click", () => toggleMcpPane(false));
+  $("insp-refresh").addEventListener("click", refreshInspector);
+  $("insp-call").addEventListener("click", invokeManually);
+  $("insp-tool-select").addEventListener("change", () => {
+    $("insp-args").value = "{}";
+    $("insp-result").textContent = "";
+    $("insp-result").classList.remove("err");
+  });
+
+  // initial inspector load so server info + tool list show up before any turn
+  refreshInspector().catch((e) => console.warn("initial inspector load failed:", e));
 
   show("setup-screen");
   rerollScenario();
