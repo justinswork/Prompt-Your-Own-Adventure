@@ -249,8 +249,11 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
   min-width: 110px;
 }
 #telemetry-log .event.router .tag { color: var(--magenta); }
+#telemetry-log .event.agent .tag { color: var(--accent-2); }
 #telemetry-log .event.mcp_client .tag { color: var(--blue); }
 #telemetry-log .event.mcp_server .tag { color: var(--blue); }
+#telemetry-log .event.fallback .tag { color: var(--warn); }
+#telemetry-log .event .src { color: var(--accent-2); font-size: 11px; font-style: italic; }
 #telemetry-log .event .meta { color: var(--gray); padding-left: 8px; }
 #telemetry-log .event .payload {
   display: block;

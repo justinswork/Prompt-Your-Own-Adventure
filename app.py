@@ -53,7 +53,7 @@ from llm import (
     generate_scenario,
     narrate,
     narrate_climax,
-    rule_enforcer,
+    rule_enforcer_agent,
 )
 
 
@@ -122,6 +122,26 @@ async def mcp_initialize_game(
         "starting_items": scenario["starting_items"],
     }
     return await _recorded_call(session, recent_calls, "initialize_game", args)
+
+
+AGENT_TOOL_ALLOWLIST = {"get_world_state", "mutate_world_state"}
+
+
+def _mcp_to_openai_tools(tools_full: list[dict]) -> list[dict]:
+    """Translate FastMCP tool schemas to OpenAI function-calling format."""
+    out: list[dict] = []
+    for t in tools_full:
+        if t["name"] not in AGENT_TOOL_ALLOWLIST:
+            continue
+        out.append({
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"] or "",
+                "parameters": t["inputSchema"],
+            },
+        })
+    return out
 
 
 def _build_mutate_args(mutation: dict) -> dict:
@@ -290,45 +310,73 @@ async def play_turn(req: TurnRequest, request: Request):
     telemetry.append({
         "stage": "router",
         "model": RULE_ENFORCER_MODEL,
-        "note": "Player intent requires structural mutation → routing to Rule Enforcer.",
-    })
-
-    try:
-        mutation = await asyncio.to_thread(rule_enforcer, state_before, req.action)
-    except Exception as e:
-        raise HTTPException(500, f"rule enforcer failed: {e}")
-
-    telemetry.append({
-        "stage": "router",
-        "model": RULE_ENFORCER_MODEL,
-        "intent": mutation.get("intent_class", "unknown"),
-        "reason": mutation.get("reason", ""),
-    })
-
-    mutate_args = _build_mutate_args(mutation)
-    telemetry.append({
-        "stage": "mcp_client",
-        "tool": "mutate_world_state",
-        "payload": {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": "mutate_world_state", "arguments": mutate_args},
-        },
-    })
-
-    new_state, _ = await mcp_mutate_world_state(mcp, recent_calls, mutation)
-
-    telemetry.append({
-        "stage": "mcp_server",
-        "status": "ACK ok",
-        "summary": (
-            f"committed Δhp={mutate_args['health_change']:+d} "
-            f"+items={mutate_args['add_items']} "
-            f"-items={mutate_args['remove_items']} "
-            f"objective_item={new_state['has_objective_item']}"
+        "note": (
+            "Spawning Rule Enforcer AGENT with MCP tools "
+            "[get_world_state, mutate_world_state] → LLM drives the loop."
         ),
     })
+
+    # Translate discovered MCP tool schemas to OpenAI function-calling format,
+    # and hand the agent a tool_caller that actually executes via MCP.
+    openai_tools = _mcp_to_openai_tools(request.app.state.tools_full)
+
+    async def agent_tool_caller(name: str, args: dict) -> dict:
+        return await _recorded_call(
+            mcp, recent_calls, name, args, source="agent"
+        )
+
+    try:
+        agent_result = await rule_enforcer_agent(
+            state_before, req.action, openai_tools, agent_tool_caller
+        )
+    except Exception as e:
+        raise HTTPException(500, f"rule enforcer agent failed: {e}")
+
+    # Emit per-iteration telemetry so the UI shows the agent's reasoning
+    # and tool calls in order.
+    for it in agent_result["iterations"]:
+        telemetry.append({
+            "stage": "agent",
+            "iteration": it["i"],
+            "text": it["text"],
+            "tool_calls": [
+                {"name": tc["name"], "args": tc["args"]}
+                for tc in it["tool_calls"]
+            ],
+            "final": not it["tool_calls"],
+        })
+        # Also surface each tool call as the usual [MCP CLIENT]/[MCP SERVER]
+        # pair so the protocol is visible end-to-end.
+        for tc in it["tool_calls"]:
+            telemetry.append({
+                "stage": "mcp_client",
+                "tool": tc["name"],
+                "source": "agent",
+                "payload": {
+                    "jsonrpc": "2.0",
+                    "id": it["i"],
+                    "method": "tools/call",
+                    "params": {"name": tc["name"], "arguments": tc["args"]},
+                },
+            })
+            telemetry.append({
+                "stage": "mcp_server",
+                "status": "ACK ok" if tc["error"] is None else "ERR",
+                "summary": tc["error"]
+                    or f"result: {json.dumps(tc['result'])[:200]}",
+            })
+
+    # If the agent forgot to commit a mutation, force a no-op so the turn
+    # counter still advances (otherwise the game would soft-lock).
+    if not agent_result["mutated"]:
+        telemetry.append({
+            "stage": "fallback",
+            "note": "Agent did not call mutate_world_state — forcing no-op.",
+        })
+        await mcp_mutate_world_state(mcp, recent_calls, {})
+
+    new_state = await mcp_get_world_state(mcp, recent_calls)
+    mutate_args = agent_result["mutate_args"]
 
     telemetry.append({
         "stage": "router",
@@ -336,9 +384,15 @@ async def play_turn(req: TurnRequest, request: Request):
         "note": "Routing mutated state → Narrator (frontier) for prose.",
     })
 
+    # The narrator's `mutation` arg is shaped like the args the agent
+    # passed to mutate_world_state — keeps the narrator function generic.
+    narrator_mutation = dict(mutate_args) if mutate_args else {"health_change": 0}
+    narrator_mutation.setdefault("intent_class", "agent")
+    narrator_mutation.setdefault("reason", agent_result["final_text"])
+
     try:
         prose = await asyncio.to_thread(
-            narrate, narrator, new_state, req.action, mutation,
+            narrate, narrator, new_state, req.action, narrator_mutation,
             new_state["player_status"]["turn_count"],
         )
     except Exception as e:
@@ -360,7 +414,12 @@ async def play_turn(req: TurnRequest, request: Request):
         "telemetry": telemetry,
         "narration": prose,
         "narrator_model": narrator,
-        "mutation": mutation,
+        "mutation": narrator_mutation,
+        "agent": {
+            "iterations": len(agent_result["iterations"]),
+            "final_text": agent_result["final_text"],
+            "mutated": agent_result["mutated"],
+        },
         "ended": ended,
         "victory": victory,
         "end_reason": end_reason,

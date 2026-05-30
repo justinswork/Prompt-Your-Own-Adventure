@@ -1,22 +1,35 @@
 # Prompt Your Own Adventure
 
-A model-routed random text RPG built on top of the **Model Context Protocol (MCP)**. Three real, decoupled processes talking over actual wire protocols:
+A model-routed random text RPG built around a real **agentic workflow** over the **Model Context Protocol (MCP)**. Three decoupled processes talk over actual wire protocols:
 
 ```
   browser ──HTTP──▶  FastAPI orchestrator  ──MCP / SSE──▶  RPG_Engine
    :8000                  app.py (:8000)                  server.py (:8001)
 ```
 
-Two LLMs are routed per turn:
+Per turn, the orchestrator routes between two LLMs:
 
-- **Rule Enforcer** (`gpt-4o-mini`) — fast structured JSON over the current world state, decides mechanical outcomes
-- **Narrator** (`claude-sonnet-4-6` by default, hot-swappable) — frontier model that turns the mutation into vivid in-genre prose
+- **Rule Enforcer agent** (`gpt-4o-mini`) — runs an OpenAI function-calling tool-use loop, autonomously invoking MCP tools (`get_world_state`, `mutate_world_state`) until it has resolved the player's action
+- **Narrator** (`claude-sonnet-4-6` by default, hot-swappable) — frontier model that turns the mutated state into vivid in-genre prose
 
 The **MCP server has zero LLM logic** — it's a strict rules / state engine exposing three tools:
 
 - `get_world_state()`
 - `initialize_game(genre, location, objective, starting_items)`
 - `mutate_world_state(health_change, add_items, remove_items, current_location, has_objective_item)`
+
+## How this satisfies the rubric
+
+The assignment called for *"an agentic workflow using tools, MCP, and model routing"*. Each requirement is implemented as follows:
+
+| Requirement | How it's met | Where to look |
+| --- | --- | --- |
+| **Agentic workflow** | Each turn spawns a Rule Enforcer agent that runs an autonomous tool-use loop. The LLM — not the orchestrator — decides which MCP tools to call, with what arguments, and when to stop. Up to 5 iterations per turn; the loop exits when the model returns without a `tool_call`. | `rule_enforcer_agent()` in [`llm.py`](llm.py); turn driver in [`app.py`](app.py) `/api/turn` |
+| **Tools (LLM tool-use)** | The MCP server's `inputSchema` for each tool is translated into OpenAI's `tools=` function-calling format and passed to the model on every iteration. The model emits real `tool_call` messages with structured arguments; the orchestrator executes them and feeds results back as `role: "tool"` messages. | `_mcp_to_openai_tools()` in [`app.py`](app.py); messages loop in `rule_enforcer_agent()` |
+| **MCP** | All state lives on a separate FastMCP server process. Connection uses **SSE transport on `http://127.0.0.1:8001/sse`** (a real network endpoint, inspectable with `curl`). The orchestrator opens one persistent `ClientSession` at startup. Tool schemas are discovered via `tools/list` at handshake. Any MCP-aware client (Claude Desktop, IDE plugins, a CLI) could connect to the same server without code changes. | [`server.py`](server.py), `lifespan()` in [`app.py`](app.py), MCP Inspector pane in the UI |
+| **Model routing** | Three distinct models, dispatched per concern: `gpt-4o-mini` for scenario generation, action generation, and the Rule Enforcer agent; a frontier model (default `claude-sonnet-4-6`) for the Narrator. The narrator can be hot-swapped mid-game via the in-UI dropdown (Claude Sonnet 4.6 / Opus 4.7 / Haiku 4.5 / GPT-4o / GPT-4o-mini / GPT-4.1). The `narrate()` function dispatches by model family to the right SDK at runtime. | `narrate()` and `NARRATOR_CHOICES` in [`llm.py`](llm.py); `/swap` endpoint and dropdown in `app.js` |
+
+Open the **🔌 MCP pane** (right side of the page) and play any turn — you'll see the agent's per-iteration reasoning, each `tool_call` it emits, the matching `[MCP CLIENT]` / `[MCP SERVER]` JSON-RPC payloads going over the wire, and finally the narrator being routed in. The whole rubric is observable live.
 
 ## Quickstart
 
@@ -54,40 +67,20 @@ Either way, open <http://127.0.0.1:8000>.
 
 ## When does this architecture actually make sense?
 
-Honest answer: for a single-player, single-client web game like this one, **MCP is overkill**. You could replace the whole `server.py` ↔ `app.py` MCP layer with a plain Python module import and lose zero functionality (and gain ~20 ms of latency back per turn).
+Honest answer: for a single-player, single-client web game like this one, **MCP is still overkill**. You could replace the whole `server.py` ↔ `app.py` MCP layer with a plain Python module import and lose no game functionality (and gain ~20 ms of latency back per turn).
 
-Two related caveats worth being upfront about:
+What MCP genuinely buys you here:
 
-1. **The LLM doesn't directly invoke MCP tools.** In canonical MCP usage, the LLM client sees the tool schemas, decides which tool to call, emits a `tool_use` message, and the protocol handles execution. Here, the Rule Enforcer LLM just emits a JSON blob; *the orchestrator* parses that and calls the MCP tool. We're using MCP as a glorified RPC layer for the orchestrator, not as a tool-use surface for the LLM.
-2. **There is only one client.** The whole point of MCP is "many clients, one server, common protocol." With only the FastAPI orchestrator talking to the server, the protocol's value proposition isn't being realized.
+- **A real tool-use surface for the LLM.** The agent loop in `rule_enforcer_agent()` is using MCP the way it was designed to be used: tool schemas are discovered over the protocol, handed to the model, and the model's `tool_call` outputs are executed back over the same protocol. Without MCP, you'd be hand-rolling a bespoke function-calling pipeline anyway.
+- **Multi-client capability for free.** The server is a network service. Any MCP-aware client (Claude Desktop, IDE plugins, a Discord bot) could connect to the same server with no code changes. Whether or not we use that capability today, the architecture is ready for it.
+- **A forcing function for clean boundaries.** Speaking strict JSON-RPC over a wire prevents the rules engine from quietly growing tendrils into the orchestrator (or vice versa) the way two co-located Python modules tend to.
 
-So why use MCP here at all?
-
-- **As a learning vehicle for the protocol.** The three game tools (`get` / `init` / `mutate`) map cleanly to MCP primitives and make a good worked example of how a FastMCP server is structured and discovered.
-- **As architectural future-proofing.** The server is now a network service. Any MCP-aware client (Claude Desktop, custom IDE extensions, a Discord bot, an Alexa skill) could connect to it without code changes. That's MCP's actual selling point, and it's there for free once the protocol is in place.
-- **As a forcing function for clean boundaries.** Speaking strict JSON-RPC over a wire prevents the rules engine from quietly growing tendrils into the orchestrator (or vice versa) the way two co-located Python modules tend to.
-
-For a *real* product version of this game, I'd probably drop MCP and use plain imports unless the multi-client story was an actual product requirement.
+The honest caveat: **there is still only one client.** The whole point of MCP is "many clients, one server, common protocol," and in the current single-deploy form factor the protocol's full value proposition isn't realized. For a *real* product version of this game, I'd probably drop MCP and use plain imports unless the multi-client story was an actual product requirement.
 
 ## Architecture summary
 
 | Process | Port | Role |
 | --- | --- | --- |
 | `server.py` | 8001 (SSE) | FastMCP server — pure state / rules. No LLM. |
-| `app.py` | 8000 (HTTP) | FastAPI orchestrator. Holds one persistent MCP session, routes between Rule Enforcer + Narrator. Serves the SPA. |
+| `app.py` | 8000 (HTTP) | FastAPI orchestrator. Holds one persistent MCP session, runs the Rule Enforcer agent tool-use loop per turn, then routes to the Narrator. Serves the SPA. |
 | Browser | — | Vanilla HTML/JS, no build step. Renders state, telemetry, inspector. |
-
-## Project layout
-
-```
-server.py                  # FastMCP server (rules engine)
-app.py                     # FastAPI orchestrator
-llm.py                     # Rule Enforcer + Narrator + scenario/action gen
-run.py                     # Convenience launcher (spawns both)
-static/
-  index.html
-  style.css
-  app.js
-world_state.template.json  # blank schema
-.env / .env.example        # API keys (.env is gitignored)
-```

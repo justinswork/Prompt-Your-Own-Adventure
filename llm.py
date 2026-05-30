@@ -227,6 +227,166 @@ def generate_action(state: dict) -> str:
     return action
 
 
+async def rule_enforcer_agent(
+    state: dict,
+    action: str,
+    tool_schemas: list[dict],
+    tool_caller,
+    max_iterations: int = 5,
+) -> dict:
+    """The Rule Enforcer as an actual agent.
+
+    Hands the MCP tool schemas to OpenAI's function-calling API and runs
+    a tool-use loop. The model autonomously decides which MCP tools to
+    call (e.g. get_world_state to recheck context, mutate_world_state to
+    commit the outcome) and with what arguments. Loops until the model
+    stops emitting tool_calls or max_iterations is hit.
+
+    This is the canonical "agentic + tools + MCP" path: the LLM, not the
+    orchestrator, drives the protocol.
+
+    Args:
+        state:        current world state (also passed in the user msg)
+        action:       the player's submitted action
+        tool_schemas: list of tools in OpenAI function-calling format
+        tool_caller:  async callable (name, args) -> dict that actually
+                      executes the tool over MCP. Supplied by the
+                      orchestrator so this module stays MCP-agnostic.
+        max_iterations: safety cap on the tool-use loop.
+
+    Returns:
+        dict with keys:
+            iterations:   list of per-step records (text + tool_calls
+                          + tool_results)
+            final_text:   the model's final natural-language summary
+            mutate_args:  the args passed to mutate_world_state (or {}
+                          if the agent never called it — caller should
+                          force a no-op fallback in that case)
+            mutated:      bool, whether mutate_world_state was called
+    """
+    client = _ensure_openai()
+    system = (
+        "You are the Rule Enforcer agent for a turn-based text RPG.\n\n"
+        "You have access to MCP tools that read and mutate the live "
+        "game world over the wire. Resolve the player's action by "
+        "CALLING those tools — do not just describe outcomes.\n\n"
+        "Each turn you MUST:\n"
+        "  1. Decide the mechanical outcome of the player's action.\n"
+        "  2. Call mutate_world_state EXACTLY ONCE to commit the "
+        "     outcome (health_change, add_items, remove_items, "
+        "     current_location, has_objective_item).\n"
+        "  3. After that tool call returns, respond with ONE plain "
+        "     sentence justifying your ruling — no further tool call.\n\n"
+        "You MAY call get_world_state first if you need to verify "
+        "current state, but state is already given to you below. Be "
+        "fair but consequential: damage from danger is typically 5-25, "
+        "healing is rare. If the player's action plausibly recovers "
+        "the objective item, set has_objective_item=true on the "
+        "mutation. Never set it back to false."
+    )
+    user_msg = (
+        f"Current world state:\n{json.dumps(state, indent=2)}\n\n"
+        f'Player action: "{action}"\n\n'
+        "Resolve this turn by invoking the appropriate MCP tool(s)."
+    )
+
+    messages: list[dict] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_msg},
+    ]
+
+    iterations: list[dict] = []
+    mutate_args: dict = {}
+    mutated = False
+
+    for i in range(1, max_iterations + 1):
+        resp = client.chat.completions.create(
+            model=RULE_ENFORCER_MODEL,
+            messages=messages,
+            tools=tool_schemas,
+            tool_choice="auto",
+            temperature=0.4,
+        )
+        msg = resp.choices[0].message
+
+        assistant_record: dict = {
+            "role": "assistant",
+            "content": msg.content or "",
+        }
+        if msg.tool_calls:
+            assistant_record["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in msg.tool_calls
+            ]
+        messages.append(assistant_record)
+
+        iter_record: dict = {
+            "i": i,
+            "text": msg.content or "",
+            "tool_calls": [],
+        }
+
+        if not msg.tool_calls:
+            iterations.append(iter_record)
+            break
+
+        for tc in msg.tool_calls:
+            name = tc.function.name
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+
+            try:
+                result = await tool_caller(name, args)
+                error: str | None = None
+            except Exception as e:  # noqa: BLE001
+                result = None
+                error = f"{type(e).__name__}: {e}"
+
+            iter_record["tool_calls"].append({
+                "id": tc.id,
+                "name": name,
+                "args": args,
+                "result": result,
+                "error": error,
+            })
+
+            if name == "mutate_world_state":
+                mutated = True
+                mutate_args = args
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": json.dumps(
+                    result if error is None else {"error": error}
+                ),
+            })
+
+        iterations.append(iter_record)
+
+    final_text = ""
+    for it in reversed(iterations):
+        if it["text"]:
+            final_text = it["text"]
+            break
+
+    return {
+        "iterations": iterations,
+        "final_text": final_text,
+        "mutate_args": mutate_args,
+        "mutated": mutated,
+    }
+
+
 def narrate_climax(model: str, state: dict, victory: bool, reason: str) -> str:
     """Generate the final scene at the end of the 10-turn run."""
     if victory:

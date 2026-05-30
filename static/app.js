@@ -128,12 +128,34 @@ function renderTelemetryEvent(event) {
       html = `<span class="tag">[MODEL ROUTER]</span><span class="meta">model=${escapeHtml(event.model)}  ${escapeHtml(meta)}</span>`;
       break;
     }
+    case "agent": {
+      const iter = String(event.iteration).padStart(1, "0");
+      const tag = event.final
+        ? `[AGENT iter${iter} ✓]`
+        : `[AGENT iter${iter}  ]`;
+      const callSummary = (event.tool_calls && event.tool_calls.length)
+        ? event.tool_calls
+            .map((tc) => `${tc.name}(${JSON.stringify(tc.args)})`)
+            .join(", ")
+        : (event.final ? "(no tool call — agent done)" : "(no tool call)");
+      html = `<span class="tag">${escapeHtml(tag)}</span><span class="meta">${escapeHtml(callSummary)}</span>`;
+      if (event.text) {
+        html += `<span class="payload">“${escapeHtml(event.text)}”</span>`;
+      }
+      break;
+    }
     case "mcp_client": {
-      html = `<span class="tag">[MCP CLIENT ]</span><span class="meta">→ ${escapeHtml(event.tool)}</span><span class="payload">${escapeHtml(JSON.stringify(event.payload))}</span>`;
+      const srcTag = event.source && event.source !== "orchestrator"
+        ? ` <em class="src">[${escapeHtml(event.source)}]</em>` : "";
+      html = `<span class="tag">[MCP CLIENT ]</span><span class="meta">→ ${escapeHtml(event.tool)}${srcTag}</span><span class="payload">${escapeHtml(JSON.stringify(event.payload))}</span>`;
       break;
     }
     case "mcp_server": {
       html = `<span class="tag">[MCP SERVER ]</span><span class="meta">← ${escapeHtml(event.status)}  ${escapeHtml(event.summary || "")}</span>`;
+      break;
+    }
+    case "fallback": {
+      html = `<span class="tag">[FALLBACK   ]</span><span class="meta">${escapeHtml(event.note || "")}</span>`;
       break;
     }
     default:
