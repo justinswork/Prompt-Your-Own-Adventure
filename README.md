@@ -84,3 +84,13 @@ The honest caveat: **there is still only one client.** The whole point of MCP is
 | `server.py` | 8001 (SSE) | FastMCP server — pure state / rules. No LLM. |
 | `app.py` | 8000 (HTTP) | FastAPI orchestrator. Holds one persistent MCP session, runs the Rule Enforcer agent tool-use loop per turn, then routes to the Narrator. Serves the SPA. |
 | Browser | — | Vanilla HTML/JS, no build step. Renders state, telemetry, inspector. |
+
+## Future ideas (week 2 and beyond)
+
+This is a week-1 first draft. Directions I'm considering for the next iteration:
+
+- **Persistent enemies + difficulty levels.** Add an `enemies` array to `world_state.json`: `[{name, hp, location, behavior}]`. New MCP tools (`add_enemy`, `damage_enemy`, `remove_enemy`) let the Rule Enforcer agent handle combat as multi-step turns — player attacks → enemy state mutates → enemy retaliates → player state mutates. A difficulty knob (easy / normal / hard / nightmare) controls enemy spawn rate, HP pools, and aggression. The point isn't "more numbers" — it's that the agent now makes multiple coordinated tool calls per turn instead of always exactly one, which actually deepens the agentic loop.
+- **A Director agent (multi-agent system).** A second agent that runs *between* player turns and decides what the world does — spawn an enemy, ratchet up tension, drop a hint about the objective, shift weather. Tools like `spawn_creature`, `drop_item`, `change_weather`. The Director's decisions are biased by the difficulty setting and the player's recent actions. Two LLM agents both driving MCP tools is the canonical multi-agent pattern.
+- **Long-term narrative memory.** Right now the Narrator sees only the current turn's mutation. Adding a turn-by-turn history (as an MCP Resource or a `get_turn_history()` tool) would let it weave callbacks to earlier events and maintain tonal consistency across the 10-turn arc.
+- **MCP Resources and Prompts.** Today we only use one of MCP's three primitives (Tools). Exposing the world state as a Resource (`world://state`) and the narrator persona as a Prompt would round out the protocol surface and demonstrate full coverage.
+- **NPCs with their own agents.** A `dialogue_with(npc_name)` tool that hands the conversation to a per-NPC agent. Each NPC has its own state (mood, knowledge, inventory) in `world_state.json`. Multi-agent storytelling on top of the existing infrastructure.
