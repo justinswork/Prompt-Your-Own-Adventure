@@ -85,6 +85,43 @@ The honest caveat: **there is still only one client.** The whole point of MCP is
 | `app.py` | 8000 (HTTP) | FastAPI orchestrator. Holds one persistent MCP session, runs the Rule Enforcer agent tool-use loop per turn, then routes to the Narrator. Serves the SPA. |
 | Browser | — | Vanilla HTML/JS, no build step. Renders state, telemetry, inspector. |
 
+## Deploy to Cloud Run
+
+Both processes run inside one container (`run.py` spawns the MCP server on internal port 8001, then uvicorn on `$PORT`). Cloud Run gives you a public `https://*.run.app` URL — no domain purchase required.
+
+**Prerequisites:** [`gcloud` CLI](https://cloud.google.com/sdk/docs/install) installed and logged in (`gcloud auth login`); an existing GCP project; billing enabled (Cloud Run free tier easily covers a class demo).
+
+**One-time project setup:**
+
+```bash
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com
+```
+
+**Deploy** (from the project root — builds the image via Cloud Build, no local Docker required):
+
+```bash
+gcloud run deploy rpg-engine \
+  --source . \
+  --region us-central1 \
+  --max-instances 1 \
+  --memory 512Mi \
+  --cpu 1 \
+  --timeout 300 \
+  --allow-unauthenticated \
+  --set-env-vars "OPENAI_API_KEY=sk-...,ANTHROPIC_API_KEY=sk-ant-..."
+```
+
+The command prints the public URL when it finishes (something like `https://rpg-engine-abc123-uc.a.run.app`). Open it in a browser and play.
+
+**Things worth knowing:**
+
+- `--max-instances 1` keeps the in-memory MCP session and the JSON state file coherent. Don't increase it without first switching state to Firestore — two instances would race on `world_state.json`.
+- `world_state.json` lives on the container's ephemeral disk. Cold starts wipe it; the server re-seeds from `world_state.template.json` on first read. For class-demo gameplay (~10 turns, short sessions) this is fine.
+- API keys go via `--set-env-vars`, never baked into the image. For a more polished setup, switch to [Secret Manager](https://cloud.google.com/run/docs/configuring/secrets).
+- LLM API costs are paid out-of-band on your OpenAI/Anthropic accounts; Cloud Run itself stays in the free tier for typical usage.
+- To redeploy after a code change: re-run the same `gcloud run deploy` command. Cloud Build will rebuild and roll out.
+
 ## Future ideas (week 2 and beyond)
 
 This is a week-1 first draft. Directions I'm considering for the next iteration:

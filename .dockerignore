@@ -1,0 +1,43 @@
+# Keep the image small and prevent secrets from being baked in.
+
+.git
+.gitignore
+.gitattributes
+
+# Local secrets — set as Cloud Run env vars instead.
+.env
+.env.local
+.env.*.local
+
+# Local runtime state (recreated from template on first read).
+world_state.json
+
+# Python build / test cruft
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / editor cruft
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker self
+Dockerfile
+.dockerignore

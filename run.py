@@ -1,9 +1,16 @@
 """
-Convenience launcher for local development.
+Convenience launcher for local development AND Cloud Run.
 
-Spawns the RPG_Engine MCP server (SSE on :8001), waits for it to bind,
-then starts uvicorn (FastAPI on :8000). Both children share this
-terminal — easy for development.
+Spawns the RPG_Engine MCP server (SSE on :8001 internally), waits for
+it to bind, then starts uvicorn for FastAPI. In a single container the
+MCP traffic never leaves localhost — only uvicorn's port is exposed.
+
+Env vars (all optional; sensible dev defaults):
+    HOST     bind address for uvicorn         (default 127.0.0.1)
+    PORT     bind port for uvicorn            (default 8000; Cloud Run
+                                              injects this automatically)
+    RELOAD   enable uvicorn --reload          (default "1" for dev;
+                                              set to "0" in production)
 
 For demos / grading, prefer the visible two-terminal flow so a viewer
 can see the MCP server's own log output as it serves tool calls:
@@ -14,6 +21,7 @@ can see the MCP server's own log output as it serves tool calls:
 
 from __future__ import annotations
 
+import os
 import signal
 import socket
 import subprocess
@@ -24,6 +32,10 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 MCP_HOST = "127.0.0.1"
 MCP_PORT = 8001
+
+UVICORN_HOST = os.getenv("HOST", "127.0.0.1")
+UVICORN_PORT = int(os.getenv("PORT", "8000"))
+UVICORN_RELOAD = os.getenv("RELOAD", "1") not in ("0", "false", "False", "")
 
 
 def _wait_for_port(host: str, port: int, timeout: float = 10.0) -> bool:
@@ -50,12 +62,17 @@ def main() -> int:
         mcp_proc.wait(timeout=5)
         return 1
 
-    print("[run.py] starting uvicorn on 127.0.0.1:8000...")
-    uvi_proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "app:app",
-         "--host", "127.0.0.1", "--port", "8000", "--reload"],
-        cwd=str(ROOT),
+    uvi_args = [
+        sys.executable, "-m", "uvicorn", "app:app",
+        "--host", UVICORN_HOST, "--port", str(UVICORN_PORT),
+    ]
+    if UVICORN_RELOAD:
+        uvi_args.append("--reload")
+    print(
+        f"[run.py] starting uvicorn on {UVICORN_HOST}:{UVICORN_PORT} "
+        f"(reload={'on' if UVICORN_RELOAD else 'off'})..."
     )
+    uvi_proc = subprocess.Popen(uvi_args, cwd=str(ROOT))
 
     try:
         uvi_proc.wait()
