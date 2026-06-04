@@ -196,42 +196,105 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 
 /* --- Game screen --- */
 
-.status-bar {
-  display: flex;
-  gap: 18px;
-  align-items: center;
+/* 3-column game dashboard: You / World / Enemies */
+.game-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1.4fr) minmax(0, 1.1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+@media (max-width: 1100px) {
+  .game-dashboard {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .game-dashboard .dash-col:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .game-dashboard { grid-template-columns: 1fr; }
+  .game-dashboard .dash-col:last-child { grid-column: auto; }
+}
+
+.dash-col {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+  border-radius: 8px;
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
-.status-bar .stat .label { display: block; font-size: 10px; }
-.status-bar .stat { font-weight: 600; }
-.status-bar .stat.grow { flex: 1; min-width: 200px; font-weight: 400; }
-.status-bar #hp { color: var(--accent-2); }
-.status-bar .narrator-stat select { font-size: 13px; padding: 4px 8px; }
-
-/* Player HP bar — sister of the enemy bar but greener at full health */
-.hp-stat .hp-row {
+.dash-title {
+  margin: 0 0 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+  color: var(--magenta);
+}
+.dash-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(48, 54, 61, 0.4);
 }
-.hp-stat .hp-max {
+.dash-row:last-child { border-bottom: none; }
+.dash-row.dash-stack { flex-direction: column; align-items: stretch; gap: 2px; }
+.dash-label {
   color: var(--muted);
-  font-weight: 400;
-  font-size: 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  flex-shrink: 0;
+  min-width: 68px;
 }
+.dash-value { font-weight: 600; }
+.dash-value-wide {
+  flex: 1;
+  text-align: right;
+  font-weight: 500;
+}
+.dash-multiline {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+/* Inventory list — one item per line, no default bullets */
+.inv-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.inv-list li {
+  padding-left: 12px;
+  position: relative;
+}
+.inv-list li::before {
+  content: "·";
+  position: absolute;
+  left: 2px;
+  color: var(--muted);
+}
+.inv-list .inv-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+.inv-list .inv-empty::before { content: ""; }
+.hp-max { color: var(--muted); font-weight: 400; font-size: 11px; }
+
+/* Player HP bar — sister of the enemy bar but greener at full health */
 .hp-bar {
   display: inline-block;
-  width: 120px;
+  flex: 1;
   height: 7px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
+  min-width: 60px;
 }
 .hp-bar-fill {
   display: block;
@@ -245,30 +308,32 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
   );
   transition: width 280ms ease-out;
 }
-
-.game-meta {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
-  margin-bottom: 14px;
-  font-size: 13px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+/* HP number color shifts green → orange → red based on percentage.
+   Applied to both the player (#hp) and enemies (.enemy-hp strong). */
+#hp, .enemy-hp strong { transition: color 280ms ease; }
+#hp.hp-full,        .enemy-hp.hp-full  strong { color: var(--accent-2); }
+#hp.hp-mid,         .enemy-hp.hp-mid   strong { color: var(--warn); }
+#hp.hp-low,         .enemy-hp.hp-low   strong { color: var(--danger); }
+.narrator-select {
+  flex: 1;
+  font-size: 12px;
+  padding: 3px 6px;
 }
-.game-meta > div { min-width: 200px; }
 
-/* Enemies list in game-meta */
-.enemies-row {
-  flex-basis: 100%;
-  min-width: 100% !important;
-}
+/* Enemies list in the dashboard column */
 .enemies-list {
-  margin-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow-y: auto;
+  max-height: 200px;
+  padding-right: 2px;
+}
+.dash-col .enemies-list:empty::after {
+  content: "(no enemies)";
+  color: var(--muted);
+  font-style: italic;
+  font-size: 12px;
 }
 .enemy-row {
   background: var(--panel-2);
@@ -299,8 +364,22 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 .threat-low    { color: var(--accent-2); }
 .threat-medium { color: var(--warn); }
 .threat-high   { color: var(--danger); }
-.enemy-loc { color: var(--muted); font-size: 11px; flex: 1; }
-.enemy-hp { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.enemy-line { justify-content: space-between; }
+.enemy-name { flex: 1; }
+.enemy-sub {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+  margin-bottom: 4px;
+}
+.enemy-hp {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.enemy-hp strong { color: var(--accent-2); font-weight: 600; }
+.enemy-hp .hp-max { color: var(--muted); font-size: 11px; font-weight: 400; }
 .enemy-bar {
   height: 4px;
   background: var(--bg);
@@ -310,9 +389,14 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 }
 .enemy-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--danger) 0%, var(--warn) 60%, var(--accent-2) 100%);
-  background-size: 200% 100%;
-  transition: width 240ms ease-out;
+  background: linear-gradient(
+    90deg,
+    var(--danger) 0%,
+    var(--warn) 25%,
+    var(--accent-2) 55%,
+    #4ade80 100%
+  );
+  transition: width 280ms ease-out;
 }
 
 /* Difficulty badge in status bar */
@@ -339,7 +423,7 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 }
 
 #narration-pane {
-  height: 380px;
+  height: 280px;
   display: flex;
   flex-direction: column;
   overflow: hidden;

@@ -49,29 +49,50 @@
 
     <!-- Game screen -->
     <section id="game-screen" class="screen hidden">
-      <div class="status-bar">
-        <span class="stat hp-stat">
-          <span class="label">Health</span>
-          <span class="hp-row">
-            <span id="hp">100</span><span class="hp-max">/100</span>
+      <div class="game-dashboard">
+        <div class="dash-col">
+          <h4 class="dash-title">You</h4>
+          <div class="dash-row">
+            <span class="dash-label">HP</span>
+            <span class="dash-value"><span id="hp">100</span><span class="hp-max">/100</span></span>
             <span class="hp-bar"><span id="hp-bar-fill" class="hp-bar-fill" style="width:100%"></span></span>
-          </span>
-        </span>
-        <span class="stat"><span class="label">Turn</span><span id="turn">0</span>/10</span>
-        <span class="stat"><span class="label">Difficulty</span><span id="difficulty-badge">normal</span></span>
-        <span class="stat grow"><span class="label">Location</span><span id="location"></span></span>
-        <span class="stat narrator-stat">
-          <span class="label">Narrator</span>
-          <select id="narrator-select"></select>
-        </span>
-      </div>
+          </div>
+          <div class="dash-row">
+            <span class="dash-label">Turn</span>
+            <span class="dash-value"><span id="turn">0</span>/10</span>
+          </div>
+          <div class="dash-row">
+            <span class="dash-label">Difficulty</span>
+            <span id="difficulty-badge" class="difficulty-tag">normal</span>
+          </div>
+          <div class="dash-row">
+            <span class="dash-label">Narrator</span>
+            <select id="narrator-select" class="narrator-select"></select>
+          </div>
+        </div>
 
-      <div class="game-meta">
-        <div><span class="label">Genre:</span> <span id="genre"></span></div>
-        <div><span class="label">Objective:</span> <span id="objective"></span></div>
-        <div><span class="label">Inventory:</span> <span id="inventory"></span></div>
-        <div class="enemies-row">
-          <span class="label">Enemies:</span>
+        <div class="dash-col">
+          <h4 class="dash-title">World</h4>
+          <div class="dash-row">
+            <span class="dash-label">Location</span>
+            <span id="location" class="dash-value-wide"></span>
+          </div>
+          <div class="dash-row">
+            <span class="dash-label">Genre</span>
+            <span id="genre" class="dash-value-wide"></span>
+          </div>
+          <div class="dash-row dash-stack">
+            <span class="dash-label">Objective</span>
+            <span id="objective" class="dash-multiline"></span>
+          </div>
+          <div class="dash-row dash-stack">
+            <span class="dash-label">Inventory</span>
+            <ul id="inventory" class="inv-list"></ul>
+          </div>
+        </div>
+
+        <div class="dash-col">
+          <h4 class="dash-title">Enemies</h4>
           <div id="enemies-list" class="enemies-list"></div>
         </div>
       </div>

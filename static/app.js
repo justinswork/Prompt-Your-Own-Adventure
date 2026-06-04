@@ -139,19 +139,39 @@ async function acceptScenario() {
 
 // ---------- Game screen ------------------------------------------------------
 
+function hpColorClass(hp, maxHp) {
+  const pct = (hp / maxHp) * 100;
+  if (pct >= 60) return "hp-full";
+  if (pct >= 25) return "hp-mid";
+  return "hp-low";
+}
+
 function renderState(state) {
   const hp = state.player_status.health;
   const hpMax = 100;
-  $("hp").textContent = hp;
+  const hpEl = $("hp");
+  hpEl.textContent = hp;
+  hpEl.className = hpColorClass(hp, hpMax);
   const hpPct = Math.max(0, Math.min(100, (hp / hpMax) * 100));
   $("hp-bar-fill").style.width = hpPct + "%";
   $("turn").textContent = state.player_status.turn_count;
   $("location").textContent = state.current_location;
   $("genre").textContent = state.genre;
   $("objective").textContent = state.objective;
-  $("inventory").textContent = state.inventory.length
-    ? state.inventory.join(", ")
-    : "(empty)";
+  const invEl = $("inventory");
+  invEl.innerHTML = "";
+  if (state.inventory.length === 0) {
+    const li = document.createElement("li");
+    li.className = "inv-empty";
+    li.textContent = "(empty)";
+    invEl.appendChild(li);
+  } else {
+    for (const item of state.inventory) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      invEl.appendChild(li);
+    }
+  }
 
   const difficulty = state.difficulty || "normal";
   const badge = $("difficulty-badge");
@@ -165,7 +185,7 @@ function renderEnemies(enemies, currentLocation) {
   const container = $("enemies-list");
   container.innerHTML = "";
   if (enemies.length === 0) {
-    container.innerHTML = `<span class="hint">(no enemies in this world)</span>`;
+    // CSS :empty::after handles the visual empty state
     return;
   }
   for (const e of enemies) {
@@ -183,9 +203,11 @@ function renderEnemies(enemies, currentLocation) {
         <span class="enemy-threat threat-${escapeHtml(threat)}" title="Threat level">
           Threat: ${escapeHtml(threat)}
         </span>
-        <span class="enemy-loc" title="Enemy location">${locText}</span>
-        <span class="enemy-hp" title="Current / max HP">${e.hp}/${e.max_hp}</span>
+        <span class="enemy-hp ${hpColorClass(e.hp, e.max_hp)}" title="Current / max HP">
+          <strong>${e.hp}</strong><span class="hp-max">/${e.max_hp}</span>
+        </span>
       </div>
+      <div class="enemy-sub" title="Enemy location">${locText}</div>
       <div class="enemy-bar"><div class="enemy-bar-fill" style="width:${pct}%"></div></div>`;
     container.appendChild(row);
   }
