@@ -20,6 +20,11 @@ ENV/
 .env.local
 .env.*.local
 
+# Node / npm cruft (this is a pure Python project — no Node.js here)
+node_modules/
+package-lock.json
+package.json
+
 # IDE / editor cruft
 .vscode/
 .idea/

@@ -18,19 +18,31 @@
     <!-- Setup screen: scenario reroll -->
     <section id="setup-screen" class="screen">
       <h2>Phase 1 — Roll a Universe</h2>
-      <p class="hint">The router model invents a random scenario. Reroll until something hooks you.</p>
+      <p class="hint" id="setup-hint">Pick a difficulty to roll your first scenario. Reroll until something hooks you.</p>
+
+      <div class="difficulty-row">
+        <span class="label">Difficulty</span>
+        <div class="difficulty-picker" id="difficulty-picker">
+          <label><input type="radio" name="difficulty" value="easy"><span>Easy</span></label>
+          <label><input type="radio" name="difficulty" value="normal"><span>Normal</span></label>
+          <label><input type="radio" name="difficulty" value="hard"><span>Hard</span></label>
+          <label><input type="radio" name="difficulty" value="nightmare"><span>Nightmare</span></label>
+        </div>
+      </div>
 
       <div id="scenario-card" class="scenario-card hidden">
+        <div class="row"><span class="label">Difficulty</span><span id="s-difficulty" class="difficulty-tag"></span></div>
         <div class="row"><span class="label">Genre</span><span id="s-genre"></span></div>
         <div class="row"><span class="label">Location</span><span id="s-location"></span></div>
         <div class="row"><span class="label">Objective</span><span id="s-objective"></span></div>
         <div class="row"><span class="label">Starting Items</span><ul id="s-items"></ul></div>
+        <div class="row"><span class="label">Starting Enemies</span><ul id="s-enemies"></ul></div>
       </div>
 
       <div id="setup-loading" class="loading hidden">rolling new scenario…</div>
 
       <div class="setup-actions">
-        <button id="btn-reroll">Reroll</button>
+        <button id="btn-reroll" disabled>Reroll</button>
         <button id="btn-accept" class="primary" disabled>Accept &amp; Play</button>
       </div>
     </section>
@@ -38,8 +50,15 @@
     <!-- Game screen -->
     <section id="game-screen" class="screen hidden">
       <div class="status-bar">
-        <span class="stat"><span class="label">Health</span><span id="hp">100</span></span>
+        <span class="stat hp-stat">
+          <span class="label">Health</span>
+          <span class="hp-row">
+            <span id="hp">100</span><span class="hp-max">/100</span>
+            <span class="hp-bar"><span id="hp-bar-fill" class="hp-bar-fill" style="width:100%"></span></span>
+          </span>
+        </span>
         <span class="stat"><span class="label">Turn</span><span id="turn">0</span>/10</span>
+        <span class="stat"><span class="label">Difficulty</span><span id="difficulty-badge">normal</span></span>
         <span class="stat grow"><span class="label">Location</span><span id="location"></span></span>
         <span class="stat narrator-stat">
           <span class="label">Narrator</span>
@@ -51,6 +70,10 @@
         <div><span class="label">Genre:</span> <span id="genre"></span></div>
         <div><span class="label">Objective:</span> <span id="objective"></span></div>
         <div><span class="label">Inventory:</span> <span id="inventory"></span></div>
+        <div class="enemies-row">
+          <span class="label">Enemies:</span>
+          <div id="enemies-list" class="enemies-list"></div>
+        </div>
       </div>
 
       <div id="narration-pane" class="pane">

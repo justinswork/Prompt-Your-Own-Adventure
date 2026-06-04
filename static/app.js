@@ -48,14 +48,38 @@ function escapeHtml(s) {
 
 // ---------- Setup screen -----------------------------------------------------
 
+function getSelectedDifficulty() {
+  const checked = document.querySelector(
+    'input[name="difficulty"]:checked'
+  );
+  return checked ? checked.value : null;
+}
+
 async function rerollScenario() {
+  const difficulty = getSelectedDifficulty();
+  if (!difficulty) {
+    // Nothing chosen yet — leave the setup screen idle.
+    $("scenario-card").classList.add("hidden");
+    $("btn-accept").disabled = true;
+    return;
+  }
+  // Lock the difficulty radios during the in-flight roll so the user
+  // can't change difficulty mid-fetch and get a scenario that doesn't
+  // match the new selection.
+  const radios = document.querySelectorAll('input[name="difficulty"]');
+  radios.forEach((r) => { r.disabled = true; });
   setBusy("setup-loading", ["btn-reroll", "btn-accept"], true);
   $("scenario-card").classList.add("hidden");
   try {
-    currentScenario = await jpost("/api/scenario");
+    currentScenario = await jpost("/api/scenario", { difficulty });
+    const rolledDifficulty = currentScenario.difficulty || difficulty;
+    const diffTag = $("s-difficulty");
+    diffTag.textContent = rolledDifficulty;
+    diffTag.className = "difficulty-tag diff-" + rolledDifficulty;
     $("s-genre").textContent = currentScenario.genre;
     $("s-location").textContent = currentScenario.location;
     $("s-objective").textContent = currentScenario.objective;
+
     const ul = $("s-items");
     ul.innerHTML = "";
     for (const item of currentScenario.starting_items) {
@@ -63,12 +87,34 @@ async function rerollScenario() {
       li.textContent = item;
       ul.appendChild(li);
     }
+
+    const eul = $("s-enemies");
+    eul.innerHTML = "";
+    const enemies = Array.isArray(currentScenario.starting_enemies)
+      ? currentScenario.starting_enemies
+      : [];
+    if (enemies.length === 0) {
+      const li = document.createElement("li");
+      li.className = "hint";
+      li.textContent = "(none — quiet start)";
+      eul.appendChild(li);
+    } else {
+      for (const e of enemies) {
+        const li = document.createElement("li");
+        li.innerHTML = `<strong>${escapeHtml(e.name)}</strong> ` +
+          `<span class="hint">[threat: ${escapeHtml(e.threat || "medium")}, hp ${e.hp}]</span><br>` +
+          `<span class="hint">${escapeHtml(e.description || "")}</span>`;
+        eul.appendChild(li);
+      }
+    }
+
     $("scenario-card").classList.remove("hidden");
     $("btn-accept").disabled = false;
   } catch (e) {
     alert("Scenario gen failed: " + e.message);
   } finally {
     setBusy("setup-loading", ["btn-reroll", "btn-accept"], false);
+    radios.forEach((r) => { r.disabled = false; });
   }
 }
 
@@ -92,7 +138,11 @@ async function acceptScenario() {
 // ---------- Game screen ------------------------------------------------------
 
 function renderState(state) {
-  $("hp").textContent = state.player_status.health;
+  const hp = state.player_status.health;
+  const hpMax = 100;
+  $("hp").textContent = hp;
+  const hpPct = Math.max(0, Math.min(100, (hp / hpMax) * 100));
+  $("hp-bar-fill").style.width = hpPct + "%";
   $("turn").textContent = state.player_status.turn_count;
   $("location").textContent = state.current_location;
   $("genre").textContent = state.genre;
@@ -100,6 +150,43 @@ function renderState(state) {
   $("inventory").textContent = state.inventory.length
     ? state.inventory.join(", ")
     : "(empty)";
+
+  const difficulty = state.difficulty || "normal";
+  const badge = $("difficulty-badge");
+  badge.textContent = difficulty;
+  badge.className = "difficulty-tag diff-" + difficulty;
+
+  renderEnemies(state.enemies || [], state.current_location);
+}
+
+function renderEnemies(enemies, currentLocation) {
+  const container = $("enemies-list");
+  container.innerHTML = "";
+  if (enemies.length === 0) {
+    container.innerHTML = `<span class="hint">(no enemies in this world)</span>`;
+    return;
+  }
+  for (const e of enemies) {
+    const pct = Math.max(0, Math.min(100, (e.hp / e.max_hp) * 100));
+    const here = e.location === currentLocation;
+    const row = document.createElement("div");
+    row.className = "enemy-row" + (here ? " here" : "");
+    const threat = e.threat || "medium";
+    const locText = here
+      ? `📍 here · ${escapeHtml(e.location)}`
+      : `📍 ${escapeHtml(e.location)}`;
+    row.innerHTML = `
+      <div class="enemy-line">
+        <span class="enemy-name">${escapeHtml(e.name)}</span>
+        <span class="enemy-threat threat-${escapeHtml(threat)}" title="Threat level">
+          Threat: ${escapeHtml(threat)}
+        </span>
+        <span class="enemy-loc" title="Enemy location">${locText}</span>
+        <span class="enemy-hp" title="Current / max HP">${e.hp}/${e.max_hp}</span>
+      </div>
+      <div class="enemy-bar"><div class="enemy-bar-fill" style="width:${pct}%"></div></div>`;
+    container.appendChild(row);
+  }
 }
 
 function appendNarration(turn, action, prose, fromAuto) {
@@ -436,11 +523,26 @@ async function init() {
   $("cb-autoplay").addEventListener("change", () => {
     if ($("cb-autoplay").checked && !$("btn-submit").disabled) autoAction();
   });
-  $("btn-restart").addEventListener("click", async () => {
+  $("btn-restart").addEventListener("click", () => {
     currentScenario = null;
     $("btn-accept").disabled = true;
+    $("btn-reroll").disabled = true;
+    // Clear any prior difficulty selection so the user has to pick again.
+    document.querySelectorAll('input[name="difficulty"]').forEach((r) => {
+      r.checked = false;
+    });
+    $("scenario-card").classList.add("hidden");
     show("setup-screen");
-    rerollScenario();
+  });
+
+  // Picking a difficulty (initially or changing) rolls a fresh scenario
+  // calibrated to that difficulty.
+  document.querySelectorAll('input[name="difficulty"]').forEach((r) => {
+    r.addEventListener("change", () => {
+      currentScenario = null;
+      $("btn-reroll").disabled = false;
+      rerollScenario();
+    });
   });
 
   // MCP side pane
@@ -458,7 +560,7 @@ async function init() {
   refreshInspector().catch((e) => console.warn("initial inspector load failed:", e));
 
   show("setup-screen");
-  rerollScenario();
+  // No initial reroll — wait for the user to pick a difficulty.
 }
 
 init();

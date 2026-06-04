@@ -73,9 +73,22 @@ def _ensure_anthropic() -> Anthropic:
 
 # ---------- LLM calls ---------------------------------------------------------
 
-def generate_scenario() -> dict:
-    """Use the cheap router model to invent a brand-new random scenario."""
+DIFFICULTY_PROFILES = {
+    "easy":      {"starting_enemies": (0, 1), "enemy_hp": (6, 14),  "tone": "light"},
+    "normal":    {"starting_enemies": (1, 2), "enemy_hp": (12, 22), "tone": "tense"},
+    "hard":      {"starting_enemies": (2, 3), "enemy_hp": (22, 36), "tone": "menacing"},
+    "nightmare": {"starting_enemies": (3, 4), "enemy_hp": (35, 55), "tone": "oppressive"},
+}
+
+
+def generate_scenario(difficulty: str = "normal") -> dict:
+    """Use the cheap router model to invent a brand-new random scenario,
+    calibrated to the requested difficulty."""
     client = _ensure_openai()
+    profile = DIFFICULTY_PROFILES.get(difficulty, DIFFICULTY_PROFILES["normal"])
+    n_low, n_high = profile["starting_enemies"]
+    hp_low, hp_high = profile["enemy_hp"]
+
     system = (
         "You are a high-variance random scenario seed generator for a "
         "text adventure engine. Each call must produce a wildly different "
@@ -85,12 +98,23 @@ def generate_scenario() -> dict:
         "imaginative, specific, and evocative."
     )
     user = (
-        "Invent ONE random scenario. Respond with JSON ONLY (no markdown) "
-        "having exactly these keys:\n"
-        '  "genre": short evocative genre label (under 6 words)\n'
-        '  "location": vivid starting location (one sentence)\n'
-        '  "objective": main quest in one imperative sentence\n'
+        f"Invent ONE random scenario at difficulty '{difficulty}' "
+        f"(tone: {profile['tone']}). Respond with JSON ONLY "
+        "(no markdown) having exactly these keys:\n"
+        '  "genre":          short evocative genre label (under 6 words)\n'
+        '  "location":       vivid starting location (one sentence)\n'
+        '  "objective":      main quest in one imperative sentence\n'
         '  "starting_items": exactly 3 thematic items as strings\n'
+        f'  "starting_enemies": between {n_low} and {n_high} creatures '
+        "present at scene start. Each enemy must be an object with:\n"
+        '       name        (short evocative name)\n'
+        f'       hp          (integer between {hp_low} and {hp_high})\n'
+        '       location    (same as the starting location for immediate '
+        "engagement, or a nearby area)\n"
+        '       threat      ("low" | "medium" | "high")\n'
+        '       description (one sentence atmospheric description)\n'
+        f"On easy mode include 0–1 weak enemies, on nightmare include "
+        f"3–4 deadly ones. Match enemies thematically to the genre."
     )
     resp = client.chat.completions.create(
         model=ROUTER_MODEL,
@@ -103,9 +127,20 @@ def generate_scenario() -> dict:
     )
     data = json.loads(resp.choices[0].message.content)
     items = data.get("starting_items", [])
-    if len(items) != 3:
+    if not isinstance(items, list) or len(items) != 3:
+        if not isinstance(items, list):
+            items = []
         items = (items + ["a worn satchel", "a half-burned letter", "a curious trinket"])[:3]
         data["starting_items"] = items
+    # Normalize: LLM may emit null / a number / a single object instead
+    # of a list when the count is 0 or 1.
+    raw_enemies = data.get("starting_enemies")
+    if isinstance(raw_enemies, dict):
+        raw_enemies = [raw_enemies]
+    elif not isinstance(raw_enemies, list):
+        raw_enemies = []
+    data["starting_enemies"] = raw_enemies
+    data["difficulty"] = difficulty
     return data
 
 
@@ -265,24 +300,50 @@ async def rule_enforcer_agent(
             mutated:      bool, whether mutate_world_state was called
     """
     client = _ensure_openai()
+    difficulty = state.get("difficulty", "normal")
+    enemies = state.get("enemies", [])
+    enemies_here = [e for e in enemies if e.get("location") == state.get("current_location")]
+
+    difficulty_notes = {
+        "easy":      "Be lenient. Damage from threats is 3-10. Enemies miss often. Rarely spawn new enemies.",
+        "normal":    "Standard pacing. Damage from threats is 5-15. Enemies hit reliably. Spawn new enemies when narrative warrants.",
+        "hard":      "Be punishing. Damage from threats is 10-25. Enemies are aggressive. Spawn new enemies often, especially when the player advances or rests.",
+        "nightmare": "Be brutal. Damage from threats is 15-35. Enemies coordinate. Spawn new enemies almost every turn; ambush is common.",
+    }
+    diff_note = difficulty_notes.get(difficulty, difficulty_notes["normal"])
+
     system = (
         "You are the Rule Enforcer agent for a turn-based text RPG.\n\n"
         "You have access to MCP tools that read and mutate the live "
         "game world over the wire. Resolve the player's action by "
         "CALLING those tools — do not just describe outcomes.\n\n"
+        "Available tools:\n"
+        "  - get_world_state()                       — refresh current state\n"
+        "  - mutate_world_state(...)                 — commit the player turn\n"
+        "  - add_enemy(name, hp, location, ...)      — spawn a creature\n"
+        "  - damage_enemy(enemy_id, damage)          — attack an enemy\n"
+        "  - remove_enemy(enemy_id)                  — despawn / flee\n\n"
         "Each turn you MUST:\n"
-        "  1. Decide the mechanical outcome of the player's action.\n"
-        "  2. Call mutate_world_state EXACTLY ONCE to commit the "
-        "     outcome (health_change, add_items, remove_items, "
-        "     current_location, has_objective_item).\n"
-        "  3. After that tool call returns, respond with ONE plain "
-        "     sentence justifying your ruling — no further tool call.\n\n"
-        "You MAY call get_world_state first if you need to verify "
-        "current state, but state is already given to you below. Be "
-        "fair but consequential: damage from danger is typically 5-25, "
-        "healing is rare. If the player's action plausibly recovers "
-        "the objective item, set has_objective_item=true on the "
-        "mutation. Never set it back to false."
+        "  1. If the player attacks an enemy, call damage_enemy with "
+        "     appropriate damage. The enemy is auto-removed if its hp "
+        "     reaches 0.\n"
+        "  2. If enemies are present and still alive after the player's "
+        "     action, they retaliate — apply enemy damage to the player "
+        "     via mutate_world_state's health_change.\n"
+        "  3. If the player enters a new area or the difficulty "
+        "     warrants it, you MAY call add_enemy to spawn new threats.\n"
+        "  4. Call mutate_world_state EXACTLY ONCE to commit the "
+        "     player-state outcome (health_change, add_items, "
+        "     remove_items, current_location, has_objective_item). "
+        "     This is the only call that advances the turn counter.\n"
+        "  5. After all tool calls, respond with ONE plain sentence "
+        "     justifying your ruling — no further tool call.\n\n"
+        f"DIFFICULTY: {difficulty} — {diff_note}\n\n"
+        f"Enemies currently at player's location: "
+        f"{json.dumps(enemies_here) if enemies_here else 'none'}\n\n"
+        "Be fair but consequential. If the player's action plausibly "
+        "recovers the objective item, set has_objective_item=true on "
+        "the mutation. Never set it back to false."
     )
     user_msg = (
         f"Current world state:\n{json.dumps(state, indent=2)}\n\n"

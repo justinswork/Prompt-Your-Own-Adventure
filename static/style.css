@@ -156,6 +156,44 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 
 .setup-actions { display: flex; gap: 10px; }
 
+/* Difficulty picker */
+.difficulty-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0 4px;
+}
+.difficulty-picker {
+  display: flex;
+  gap: 6px;
+}
+.difficulty-picker label {
+  cursor: pointer;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  user-select: none;
+  transition: background 120ms, border-color 120ms;
+}
+.difficulty-picker label:hover { background: #2a313c; }
+.difficulty-picker input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.difficulty-picker label:has(input:checked) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(88, 166, 255, 0.08);
+}
+.difficulty-picker label:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+#s-enemies li { margin-bottom: 6px; }
+
 /* --- Game screen --- */
 
 .status-bar {
@@ -175,6 +213,39 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 .status-bar #hp { color: var(--accent-2); }
 .status-bar .narrator-stat select { font-size: 13px; padding: 4px 8px; }
 
+/* Player HP bar — sister of the enemy bar but greener at full health */
+.hp-stat .hp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hp-stat .hp-max {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12px;
+}
+.hp-bar {
+  display: inline-block;
+  width: 120px;
+  height: 7px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.hp-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--danger) 0%,
+    var(--warn) 25%,
+    var(--accent-2) 55%,
+    #4ade80 100%
+  );
+  transition: width 280ms ease-out;
+}
+
 .game-meta {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -187,6 +258,77 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
   gap: 16px;
 }
 .game-meta > div { min-width: 200px; }
+
+/* Enemies list in game-meta */
+.enemies-row {
+  flex-basis: 100%;
+  min-width: 100% !important;
+}
+.enemies-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.enemy-row {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+.enemy-row.here {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px rgba(248, 81, 73, 0.25);
+}
+.enemy-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.enemy-name { font-weight: 600; }
+.enemy-threat {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.threat-low    { color: var(--accent-2); }
+.threat-medium { color: var(--warn); }
+.threat-high   { color: var(--danger); }
+.enemy-loc { color: var(--muted); font-size: 11px; flex: 1; }
+.enemy-hp { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.enemy-bar {
+  height: 4px;
+  background: var(--bg);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+.enemy-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--danger) 0%, var(--warn) 60%, var(--accent-2) 100%);
+  background-size: 200% 100%;
+  transition: width 240ms ease-out;
+}
+
+/* Difficulty badge in status bar */
+.difficulty-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border: 1px solid var(--border);
+}
+.diff-easy      { color: var(--accent-2); border-color: var(--accent-2); }
+.diff-normal    { color: var(--accent);   border-color: var(--accent); }
+.diff-hard      { color: var(--warn);     border-color: var(--warn); }
+.diff-nightmare { color: var(--danger);   border-color: var(--danger); }
 
 .pane {
   background: var(--panel);

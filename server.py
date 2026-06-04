@@ -32,7 +32,21 @@ def _read_state() -> dict:
             template = json.load(f)
         _write_state(template)
     with STATE_FILE.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        state = json.load(f)
+    # Defensive backfill for older state files predating the
+    # difficulty / enemies schema additions.
+    state.setdefault("difficulty", "normal")
+    state.setdefault("enemies", [])
+    return state
+
+
+def _next_enemy_id(state: dict) -> str:
+    """Return the smallest 'eN' id not currently used by any enemy."""
+    used = {e["id"] for e in state.get("enemies", [])}
+    n = 1
+    while f"e{n}" in used:
+        n += 1
+    return f"e{n}"
 
 
 def _write_state(state: dict) -> None:
@@ -61,6 +75,8 @@ def initialize_game(
     location: str,
     objective: str,
     starting_items: list[str],
+    difficulty: str = "normal",
+    starting_enemies: Optional[list[dict]] = None,
 ) -> dict:
     """
     Overwrite world_state.json to begin a brand-new universe.
@@ -75,6 +91,12 @@ def initialize_game(
         location: The starting room / area description.
         objective: The single-sentence main quest the player must complete.
         starting_items: 3 thematic items the player begins with.
+        difficulty: One of "easy" | "normal" | "hard" | "nightmare".
+            Affects the Rule Enforcer agent's combat math and enemy spawn
+            rate, plus the scenario generator's tone.
+        starting_enemies: Optional list of enemies present at scenario
+            start. Each entry is a dict with name/hp/location/threat/
+            description. The server assigns each one a unique id.
 
     Returns the freshly committed world state dict.
     """
@@ -86,7 +108,21 @@ def initialize_game(
             "player_status": {"health": 100, "turn_count": 0},
             "inventory": list(starting_items),
             "has_objective_item": False,
+            "difficulty": difficulty,
+            "enemies": [],
         }
+        if starting_enemies:
+            for raw in starting_enemies:
+                hp = int(raw.get("hp", 10))
+                state["enemies"].append({
+                    "id": _next_enemy_id(state),
+                    "name": str(raw.get("name", "Unknown")),
+                    "hp": hp,
+                    "max_hp": hp,
+                    "location": str(raw.get("location", location)),
+                    "threat": str(raw.get("threat", "medium")),
+                    "description": str(raw.get("description", "")),
+                })
         _write_state(state)
         return state
 
@@ -143,6 +179,108 @@ def mutate_world_state(
         if has_objective_item is not None:
             state["has_objective_item"] = bool(has_objective_item)
 
+        _write_state(state)
+        return state
+
+
+@mcp.tool()
+def add_enemy(
+    name: str,
+    hp: int,
+    location: str,
+    threat: str = "medium",
+    description: str = "",
+) -> dict:
+    """
+    Spawn a new enemy into the world.
+
+    Use when the player enters a dangerous area, the agent decides a
+    creature should ambush, or difficulty escalates and more threats
+    appear. Does NOT increment turn_count (only mutate_world_state
+    does that — call this BEFORE mutate_world_state in the same turn).
+
+    Args:
+        name: Short evocative name (e.g. "Shadow Wraith", "Iron Sentinel").
+        hp: Starting hit points (also stored as max_hp). Calibrate to
+            difficulty: easy 8-15, normal 15-25, hard 25-40, nightmare 40-60.
+        location: Where the enemy is. Usually the player's current_location
+            for immediate engagement, but can be elsewhere if pre-seeding.
+        threat: "low" | "medium" | "high" — narrative tag that the agent
+            uses to scale combat math and the narrator uses for tone.
+        description: One-sentence atmospheric description rendered to the
+            player.
+
+    Returns the full updated world state, with the new enemy appended to
+    state.enemies and a server-assigned id (e.g. "e3").
+    """
+    with _file_lock:
+        state = _read_state()
+        new_enemy = {
+            "id": _next_enemy_id(state),
+            "name": name,
+            "hp": int(hp),
+            "max_hp": int(hp),
+            "location": location,
+            "threat": threat,
+            "description": description,
+        }
+        state.setdefault("enemies", []).append(new_enemy)
+        _write_state(state)
+        return state
+
+
+@mcp.tool()
+def damage_enemy(enemy_id: str, damage: int) -> dict:
+    """
+    Apply damage to an enemy by id. If hp drops to 0 or below, the
+    enemy is removed from the world automatically.
+
+    Use when the player attacks a specific enemy. Does NOT increment
+    turn_count — call mutate_world_state separately to commit the
+    full turn outcome (player's damage taken, items used, etc.).
+
+    Args:
+        enemy_id: The id (e.g. "e1") of the enemy to damage. Get this
+            from get_world_state() or the return value of add_enemy.
+        damage: Damage amount (positive int). Negative values heal,
+            which is rare but allowed.
+
+    Returns the full updated world state. If the enemy is killed by
+    this call, it will be absent from state.enemies in the response.
+    """
+    with _file_lock:
+        state = _read_state()
+        enemies = state.get("enemies", [])
+        for idx, enemy in enumerate(enemies):
+            if enemy["id"] == enemy_id:
+                enemy["hp"] = enemy["hp"] - int(damage)
+                if enemy["hp"] <= 0:
+                    enemies.pop(idx)
+                break
+        _write_state(state)
+        return state
+
+
+@mcp.tool()
+def remove_enemy(enemy_id: str) -> dict:
+    """
+    Remove an enemy from the world without dealing damage.
+
+    Use when the enemy flees, despawns naturally, wanders off, or is
+    otherwise no longer present (but not killed in combat — for that,
+    use damage_enemy until hp drops to 0). Does NOT increment
+    turn_count.
+
+    Args:
+        enemy_id: The id (e.g. "e1") of the enemy to remove.
+
+    Returns the full updated world state.
+    """
+    with _file_lock:
+        state = _read_state()
+        state["enemies"] = [
+            e for e in state.get("enemies", []) if e["id"] != enemy_id
+        ]
         _write_state(state)
         return state
 

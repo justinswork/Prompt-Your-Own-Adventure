@@ -7,5 +7,7 @@
     "turn_count": 0
   },
   "inventory": [],
-  "has_objective_item": false
+  "has_objective_item": false,
+  "difficulty": "normal",
+  "enemies": []
 }

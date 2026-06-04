@@ -120,11 +120,19 @@ async def mcp_initialize_game(
         "location": scenario["location"],
         "objective": scenario["objective"],
         "starting_items": scenario["starting_items"],
+        "difficulty": scenario.get("difficulty", "normal"),
+        "starting_enemies": scenario.get("starting_enemies", []),
     }
     return await _recorded_call(session, recent_calls, "initialize_game", args)
 
 
-AGENT_TOOL_ALLOWLIST = {"get_world_state", "mutate_world_state"}
+AGENT_TOOL_ALLOWLIST = {
+    "get_world_state",
+    "mutate_world_state",
+    "add_enemy",
+    "damage_enemy",
+    "remove_enemy",
+}
 
 
 def _mcp_to_openai_tools(tools_full: list[dict]) -> list[dict]:
@@ -233,11 +241,25 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ---------- Schemas ------------------------------------------------------------
 
+class Enemy(BaseModel):
+    name: str
+    hp: int
+    location: str
+    threat: str = "medium"
+    description: str = ""
+
+
 class Scenario(BaseModel):
     genre: str
     location: str
     objective: str
     starting_items: list[str]
+    difficulty: str = "normal"
+    starting_enemies: list[Enemy] = []
+
+
+class ScenarioRequest(BaseModel):
+    difficulty: str = "normal"
 
 
 class TurnRequest(BaseModel):
@@ -275,9 +297,9 @@ async def get_state(request: Request):
 
 
 @app.post("/api/scenario")
-async def gen_scenario():
+async def gen_scenario(req: ScenarioRequest = ScenarioRequest()):
     try:
-        return await asyncio.to_thread(generate_scenario)
+        return await asyncio.to_thread(generate_scenario, req.difficulty)
     except Exception as e:
         raise HTTPException(500, f"scenario generation failed: {e}")
 

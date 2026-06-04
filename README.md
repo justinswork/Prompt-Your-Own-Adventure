@@ -12,11 +12,19 @@ Per turn, the orchestrator routes between two LLMs:
 - **Rule Enforcer agent** (`gpt-4o-mini`) — runs an OpenAI function-calling tool-use loop, autonomously invoking MCP tools (`get_world_state`, `mutate_world_state`) until it has resolved the player's action
 - **Narrator** (`claude-sonnet-4-6` by default, hot-swappable) — frontier model that turns the mutated state into vivid in-genre prose
 
-The **MCP server has zero LLM logic** — it's a strict rules / state engine exposing three tools:
+The **MCP server has zero LLM logic** — it's a strict rules / state engine exposing six tools:
 
+State / player tools:
 - `get_world_state()`
-- `initialize_game(genre, location, objective, starting_items)`
+- `initialize_game(genre, location, objective, starting_items, difficulty, starting_enemies)`
 - `mutate_world_state(health_change, add_items, remove_items, current_location, has_objective_item)`
+
+Combat / world tools (added in week 2):
+- `add_enemy(name, hp, location, threat, description)`
+- `damage_enemy(enemy_id, damage)`
+- `remove_enemy(enemy_id)`
+
+Only `mutate_world_state` advances the turn counter, so the agent can freely chain multiple combat tool calls within a single turn.
 
 ## How this satisfies the rubric
 
@@ -122,12 +130,19 @@ The command prints the public URL when it finishes (something like `https://rpg-
 - LLM API costs are paid out-of-band on your OpenAI/Anthropic accounts; Cloud Run itself stays in the free tier for typical usage.
 - To redeploy after a code change: re-run the same `gcloud run deploy` command. Cloud Build will rebuild and roll out.
 
-## Future ideas (week 2 and beyond)
+## Combat + difficulty (week 2)
 
-This is a week-1 first draft. Directions I'm considering for the next iteration:
+The world now carries an `enemies` array and a `difficulty` setting (easy / normal / hard / nightmare), chosen on the setup screen. The scenario generator seeds the scene with appropriate creatures; the Rule Enforcer agent has three new MCP tools (`add_enemy`, `damage_enemy`, `remove_enemy`) it can chain together within a single turn to resolve combat. Concretely:
 
-- **Persistent enemies + difficulty levels.** Add an `enemies` array to `world_state.json`: `[{name, hp, location, behavior}]`. New MCP tools (`add_enemy`, `damage_enemy`, `remove_enemy`) let the Rule Enforcer agent handle combat as multi-step turns — player attacks → enemy state mutates → enemy retaliates → player state mutates. A difficulty knob (easy / normal / hard / nightmare) controls enemy spawn rate, HP pools, and aggression. The point isn't "more numbers" — it's that the agent now makes multiple coordinated tool calls per turn instead of always exactly one, which actually deepens the agentic loop.
-- **A Director agent (multi-agent system).** A second agent that runs *between* player turns and decides what the world does — spawn an enemy, ratchet up tension, drop a hint about the objective, shift weather. Tools like `spawn_creature`, `drop_item`, `change_weather`. The Director's decisions are biased by the difficulty setting and the player's recent actions. Two LLM agents both driving MCP tools is the canonical multi-agent pattern.
+- The agent inspects which enemies are at the player's current location, decides damage, calls `damage_enemy(id, dmg)` for each one the player attacks (auto-removed if hp ≤ 0), applies enemy retaliation to the player via `mutate_world_state(health_change=...)`, and may call `add_enemy` to spawn new threats when difficulty warrants.
+- Only `mutate_world_state` increments the turn counter, so the agent's combat chain can run to any reasonable depth within one turn.
+- The agent's system prompt is dynamically calibrated by difficulty — `nightmare` tells it enemies hit for 15-35 and to spawn ambushes most turns; `easy` keeps damage 3-10 and enemy spawns rare.
+
+This was the highest-leverage week-2 change because it forces the agent to make multiple coordinated tool calls per turn instead of always exactly one — which is where the rubric word *agentic* actually starts to do work.
+
+## Future ideas (week 2 continued and beyond)
+
+- **A Director agent (multi-agent system).** A second agent that runs *between* player turns and decides what the world does — spawn an enemy, ratchet up tension, drop a hint about the objective, shift weather. Two LLM agents both driving MCP tools is the canonical multi-agent pattern.
 - **Long-term narrative memory.** Right now the Narrator sees only the current turn's mutation. Adding a turn-by-turn history (as an MCP Resource or a `get_turn_history()` tool) would let it weave callbacks to earlier events and maintain tonal consistency across the 10-turn arc.
 - **MCP Resources and Prompts.** Today we only use one of MCP's three primitives (Tools). Exposing the world state as a Resource (`world://state`) and the narrator persona as a Prompt would round out the protocol surface and demonstrate full coverage.
 - **NPCs with their own agents.** A `dialogue_with(npc_name)` tool that hands the conversation to a per-NPC agent. Each NPC has its own state (mood, knowledge, inventory) in `world_state.json`. Multi-agent storytelling on top of the existing infrastructure.
