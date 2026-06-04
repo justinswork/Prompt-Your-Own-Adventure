@@ -338,21 +338,69 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
   margin-bottom: 14px;
 }
 
-#narration-pane { max-height: 60vh; overflow-y: auto; }
-
-#narration-log .turn-entry {
-  border-bottom: 1px dashed var(--border);
-  padding: 10px 0 12px;
+#narration-pane {
+  height: 380px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-#narration-log .turn-entry:last-child { border-bottom: none; }
-#narration-log .turn-entry .turn-tag {
+.narration-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+.narration-header h3 { margin: 0; }
+.narration-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.nav-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.nav-btn:hover:not(:disabled) { background: #2a313c; border-color: var(--gray); }
+.nav-counter {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  min-width: 90px;
+  text-align: center;
+}
+.narration-display {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.narration-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: italic;
+}
+
+#narration-display .turn-entry {
+  padding: 4px 0;
+}
+#narration-display .turn-entry .turn-tag {
   color: var(--muted);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
-#narration-log .auto-badge {
+#narration-display .auto-badge {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 6px;
@@ -362,12 +410,14 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
   font-size: 10px;
   letter-spacing: 0.5px;
 }
-#narration-log .turn-entry .action {
+#narration-display .turn-entry .action {
   color: var(--accent);
   font-style: italic;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
 }
-#narration-log .turn-entry .prose { white-space: pre-wrap; }
+#narration-display .turn-entry .prose { white-space: pre-wrap; }
 
 #telemetry-log {
   font-family: var(--mono);

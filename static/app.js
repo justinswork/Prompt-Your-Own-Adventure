@@ -5,6 +5,8 @@ const $ = (id) => document.getElementById(id);
 
 let currentScenario = null;     // generated scenario awaiting accept
 let currentNarrator = null;     // active narrator model
+let turnHistory = [];           // [{turn, action, prose, fromAuto}]
+let viewIndex = -1;             // index into turnHistory currently shown
 
 // ---------- API helpers ------------------------------------------------------
 
@@ -124,7 +126,7 @@ async function acceptScenario() {
   try {
     const { state } = await jpost("/api/accept", currentScenario);
     renderState(state);
-    $("narration-log").innerHTML = "";
+    resetNarrationHistory();
     $("telemetry-log").innerHTML = "";
     show("game-screen");
     $("action-input").focus();
@@ -190,17 +192,51 @@ function renderEnemies(enemies, currentLocation) {
 }
 
 function appendNarration(turn, action, prose, fromAuto) {
-  const div = document.createElement("div");
-  div.className = "turn-entry appear";
-  const autoBadge = fromAuto ? ` <span class="auto-badge">auto</span>` : "";
-  div.innerHTML = `
-    <div class="turn-tag">Turn ${turn}${autoBadge}</div>
-    <div class="action">› ${escapeHtml(action)}</div>
-    <div class="prose">${escapeHtml(prose)}</div>
-  `;
-  const log = $("narration-log");
-  log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  turnHistory.push({ turn, action, prose, fromAuto: !!fromAuto });
+  viewIndex = turnHistory.length - 1;
+  renderCurrentTurn();
+}
+
+function renderCurrentTurn() {
+  const display = $("narration-display");
+  const counter = $("narration-counter");
+  const prev = $("btn-prev-turn");
+  const next = $("btn-next-turn");
+
+  if (turnHistory.length === 0) {
+    display.innerHTML = `<div class="narration-empty hint">Submit an action below to begin.</div>`;
+    counter.textContent = "no turns yet";
+    prev.disabled = true;
+    next.disabled = true;
+    return;
+  }
+
+  const entry = turnHistory[viewIndex];
+  const autoBadge = entry.fromAuto ? ` <span class="auto-badge">auto</span>` : "";
+  display.innerHTML = `
+    <div class="turn-entry appear">
+      <div class="turn-tag">Turn ${entry.turn}${autoBadge}</div>
+      <div class="action">› ${escapeHtml(entry.action)}</div>
+      <div class="prose">${escapeHtml(entry.prose)}</div>
+    </div>`;
+  display.scrollTop = 0;
+
+  counter.textContent = `Turn ${entry.turn} of ${turnHistory.length}`;
+  prev.disabled = viewIndex <= 0;
+  next.disabled = viewIndex >= turnHistory.length - 1;
+}
+
+function navigateTurn(delta) {
+  const next = viewIndex + delta;
+  if (next < 0 || next >= turnHistory.length) return;
+  viewIndex = next;
+  renderCurrentTurn();
+}
+
+function resetNarrationHistory() {
+  turnHistory = [];
+  viewIndex = -1;
+  renderCurrentTurn();
 }
 
 function renderTelemetryEvent(event) {
@@ -544,6 +580,10 @@ async function init() {
       rerollScenario();
     });
   });
+
+  // Narration pagination
+  $("btn-prev-turn").addEventListener("click", () => navigateTurn(-1));
+  $("btn-next-turn").addEventListener("click", () => navigateTurn(1));
 
   // MCP side pane
   $("btn-mcp-collapse").addEventListener("click", () => toggleMcpPane(true));

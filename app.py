@@ -342,7 +342,26 @@ async def play_turn(req: TurnRequest, request: Request):
     # and hand the agent a tool_caller that actually executes via MCP.
     openai_tools = _mcp_to_openai_tools(request.app.state.tools_full)
 
+    # Guard against the agent calling mutate_world_state more than once
+    # per turn — each call increments turn_count, which would corrupt the
+    # "Turn N of 10" tracking. Subsequent calls return the current state
+    # with an explanatory note so the agent can correct course.
+    mutate_call_count = 0
+
     async def agent_tool_caller(name: str, args: dict) -> dict:
+        nonlocal mutate_call_count
+        if name == "mutate_world_state":
+            if mutate_call_count >= 1:
+                current = await mcp_get_world_state(mcp, recent_calls)
+                return {
+                    **current,
+                    "_note": (
+                        "mutate_world_state has already been called this "
+                        "turn. Further calls are ignored to preserve the "
+                        "turn counter. Finish your response now."
+                    ),
+                }
+            mutate_call_count += 1
         return await _recorded_call(
             mcp, recent_calls, name, args, source="agent"
         )

@@ -77,8 +77,19 @@
       </div>
 
       <div id="narration-pane" class="pane">
-        <h3>Narration</h3>
-        <div id="narration-log"></div>
+        <div class="narration-header">
+          <h3>Narration</h3>
+          <div class="narration-nav">
+            <button type="button" id="btn-prev-turn" class="nav-btn" disabled
+                    title="View previous turn">‹ Prev</button>
+            <span id="narration-counter" class="nav-counter">no turns yet</span>
+            <button type="button" id="btn-next-turn" class="nav-btn" disabled
+                    title="View next turn">Next ›</button>
+          </div>
+        </div>
+        <div id="narration-display" class="narration-display">
+          <div class="narration-empty hint">Submit an action below to begin.</div>
+        </div>
       </div>
 
       <form id="action-form" class="action-form">
