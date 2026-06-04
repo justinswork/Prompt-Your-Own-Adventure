@@ -34,9 +34,12 @@ def _read_state() -> dict:
     with STATE_FILE.open("r", encoding="utf-8") as f:
         state = json.load(f)
     # Defensive backfill for older state files predating the
-    # difficulty / enemies schema additions.
+    # difficulty / enemies / companion schema additions.
     state.setdefault("difficulty", "normal")
     state.setdefault("enemies", [])
+    state.setdefault("companion", {
+        "name": "", "persona": "", "avatar": "", "greeting": ""
+    })
     return state
 
 
@@ -77,6 +80,7 @@ def initialize_game(
     starting_items: list[str],
     difficulty: str = "normal",
     starting_enemies: Optional[list[dict]] = None,
+    companion: Optional[dict] = None,
 ) -> dict:
     """
     Overwrite world_state.json to begin a brand-new universe.
@@ -110,6 +114,12 @@ def initialize_game(
             "has_objective_item": False,
             "difficulty": difficulty,
             "enemies": [],
+            "companion": {
+                "name": str((companion or {}).get("name", "")),
+                "persona": str((companion or {}).get("persona", "")),
+                "avatar": str((companion or {}).get("avatar", "")),
+                "greeting": str((companion or {}).get("greeting", "")),
+            },
         }
         if starting_enemies:
             for raw in starting_enemies:

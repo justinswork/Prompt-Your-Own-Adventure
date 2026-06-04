@@ -80,6 +80,28 @@ DIFFICULTY_PROFILES = {
     "nightmare": {"starting_enemies": (3, 4), "enemy_hp": (35, 55), "tone": "oppressive"},
 }
 
+# How helpful the companion is, parametrized by difficulty. Threaded into
+# both the companion's persona generation and every response prompt.
+COMPANION_HELPFULNESS = {
+    "easy": (
+        "Earnest, warm, and eager to help. Volunteers direct advice freely. "
+        "Names items by their effects when asked. Roots for the player."
+    ),
+    "normal": (
+        "Knowledgeable and willing to help, but stops short of spoiling. "
+        "Gives useful hints rather than full solutions. Friendly but measured."
+    ),
+    "hard": (
+        "Cryptic and a touch aloof. Answers in riddles, partial truths, and "
+        "questions back. Will help, but the player has to think to extract it."
+    ),
+    "nightmare": (
+        "Theatrical and unreliable. Sometimes wrong. Sometimes outright "
+        "misleading for the drama of it. Believes themselves helpful even "
+        "when not. Treat their advice with suspicion."
+    ),
+}
+
 
 def generate_scenario(difficulty: str = "normal") -> dict:
     """Use the cheap router model to invent a brand-new random scenario,
@@ -97,6 +119,9 @@ def generate_scenario(difficulty: str = "normal") -> dict:
         "west, undersea, dieselpunk, cosmic horror, pirate, etc. Be "
         "imaginative, specific, and evocative."
     )
+    helpfulness = COMPANION_HELPFULNESS.get(
+        difficulty, COMPANION_HELPFULNESS["normal"]
+    )
     user = (
         f"Invent ONE random scenario at difficulty '{difficulty}' "
         f"(tone: {profile['tone']}). Respond with JSON ONLY "
@@ -113,8 +138,21 @@ def generate_scenario(difficulty: str = "normal") -> dict:
         "engagement, or a nearby area)\n"
         '       threat      ("low" | "medium" | "high")\n'
         '       description (one sentence atmospheric description)\n'
+        '  "companion":      a guide character who travels with the player. '
+        "Must be an object with:\n"
+        '       name      (short, memorable, thematic to the genre — '
+        "e.g. 'Wick' for fantasy, 'A.R.I.' for cyberpunk, 'Doc' for "
+        "weird west)\n"
+        '       avatar    (single emoji that fits them — 🕯️ 🤖 🦊 🪐 👁️ etc.)\n'
+        '       persona   (one sentence describing who/what they are '
+        "and their distinctive voice)\n"
+        '       greeting  (their first line to the player, 1-3 sentences, '
+        "in-character, welcoming, hints they're available for questions)\n"
+        f"The companion's helpfulness MUST match this profile for the "
+        f"'{difficulty}' difficulty: {helpfulness}\n"
         f"On easy mode include 0–1 weak enemies, on nightmare include "
-        f"3–4 deadly ones. Match enemies thematically to the genre."
+        f"3–4 deadly ones. Match enemies and companion thematically to "
+        f"the genre."
     )
     resp = client.chat.completions.create(
         model=ROUTER_MODEL,
@@ -140,6 +178,20 @@ def generate_scenario(difficulty: str = "normal") -> dict:
     elif not isinstance(raw_enemies, list):
         raw_enemies = []
     data["starting_enemies"] = raw_enemies
+
+    # Defensive normalize: ensure companion is a complete dict.
+    raw_comp = data.get("companion")
+    if not isinstance(raw_comp, dict):
+        raw_comp = {}
+    data["companion"] = {
+        "name": str(raw_comp.get("name", "")).strip() or "Pilot",
+        "persona": str(raw_comp.get("persona", "")).strip()
+            or "A laconic guide who travels with you.",
+        "avatar": str(raw_comp.get("avatar", "")).strip() or "🧭",
+        "greeting": str(raw_comp.get("greeting", "")).strip()
+            or "I'm here if you need me. Ask away.",
+    }
+
     data["difficulty"] = difficulty
     return data
 
@@ -446,6 +498,115 @@ async def rule_enforcer_agent(
         "mutate_args": mutate_args,
         "mutated": mutated,
     }
+
+
+def generate_action_suggestions(state: dict) -> list[str]:
+    """Generate 3 short, varied starter actions tailored to the current state.
+
+    Used by the "Need ideas?" panel that shows on the first turn (and on
+    demand) to onboard new players who aren't sure what to type.
+    """
+    client = _ensure_openai()
+    system = (
+        f"You are suggesting starter actions for a player in a "
+        f"{state.get('genre', 'mysterious')} text RPG. Your suggestions "
+        "appear as clickable chips for new players who don't know what to "
+        "type. Each suggestion must be:\n"
+        "  - 3-8 words, first person or imperative voice\n"
+        "  - A concrete ATTEMPT, not a guaranteed outcome ('search behind "
+        "    the tapestry' not 'find the hidden key')\n"
+        "  - Grounded in the current location and inventory\n"
+        "  - Varied across the three: one investigate, one move/interact, "
+        "    one bolder/riskier (combat, gambit, social ask)"
+    )
+    user = (
+        f"Current world state:\n{json.dumps(state, indent=2)}\n\n"
+        "Respond with JSON ONLY: "
+        "{\"suggestions\": [\"action 1\", \"action 2\", \"action 3\"]}"
+    )
+    resp = client.chat.completions.create(
+        model=ROUTER_MODEL,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.95,
+    )
+    data = json.loads(resp.choices[0].message.content)
+    raw = data.get("suggestions", [])
+    if not isinstance(raw, list):
+        raw = []
+    out = [s.strip() for s in raw if isinstance(s, str) and s.strip()][:3]
+    return out
+
+
+def companion_respond(
+    state: dict, conversation_history: list[dict], question: str
+) -> str:
+    """Companion answers a player's question in-character, grounded in the
+    current world state. Helpfulness is calibrated by difficulty.
+
+    Args:
+        state: current world state (genre, location, inventory, enemies, etc.)
+        conversation_history: list of {role: "user"|"assistant", content: str}
+            messages from this game session.
+        question: the player's latest question.
+
+    Returns the companion's reply as plain text.
+    """
+    client = _ensure_openai()
+    companion = state.get("companion") or {}
+    difficulty = state.get("difficulty", "normal")
+    name = companion.get("name") or "Pilot"
+    persona = companion.get("persona") or "A laconic guide."
+    helpfulness = COMPANION_HELPFULNESS.get(
+        difficulty, COMPANION_HELPFULNESS["normal"]
+    )
+
+    system = (
+        f"You are {name}, the player's in-game companion. Stay strictly "
+        f"in-character.\n\n"
+        f"PERSONA: {persona}\n\n"
+        f"GENRE: {state.get('genre', 'unknown')}\n"
+        f"DIFFICULTY ({difficulty}) — your helpfulness profile: "
+        f"{helpfulness}\n\n"
+        "GROUNDING — the player's situation right now:\n"
+        f"  Location:  {state.get('current_location', '?')}\n"
+        f"  Objective: {state.get('objective', '?')}\n"
+        f"  Inventory: {', '.join(state.get('inventory', [])) or '(empty)'}\n"
+        f"  Health:    {state.get('player_status', {}).get('health', '?')}/100\n"
+        f"  Turn:      {state.get('player_status', {}).get('turn_count', 0)}/10\n"
+        f"  Enemies present: "
+        f"{json.dumps(state.get('enemies', []))}\n\n"
+        "RULES:\n"
+        "  - Speak as the companion, not as the game system. Never break "
+        "    character or mention 'LLM', 'AI', 'turn count', or game mechanics.\n"
+        "  - Keep replies short — 1-3 sentences, occasionally up to 5 if "
+        "    the question genuinely warrants depth.\n"
+        "  - When the player asks about an inventory item, location, "
+        "    enemy, or objective, ground your answer in the state above.\n"
+        "  - Match the genre's voice. Stay consistent with your persona.\n"
+        "  - If the player asks for action ideas, suggest 2-3 concrete "
+        "    attempts (not outcomes), shaped by your helpfulness profile."
+    )
+
+    messages: list[dict] = [{"role": "system", "content": system}]
+    # Replay prior turns of conversation (companion's view of the chat).
+    for msg in (conversation_history or [])[-12:]:  # cap context size
+        role = msg.get("role")
+        content = msg.get("content")
+        if role in ("user", "assistant") and isinstance(content, str):
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": question})
+
+    resp = client.chat.completions.create(
+        model=ROUTER_MODEL,
+        messages=messages,
+        temperature=0.85,
+        max_tokens=240,
+    )
+    return resp.choices[0].message.content.strip()
 
 
 def narrate_climax(model: str, state: dict, victory: bool, reason: str) -> str:

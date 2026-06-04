@@ -7,6 +7,8 @@ let currentScenario = null;     // generated scenario awaiting accept
 let currentNarrator = null;     // active narrator model
 let turnHistory = [];           // [{turn, action, prose, fromAuto}]
 let viewIndex = -1;             // index into turnHistory currently shown
+let companionHistory = [];      // [{role: "user"|"assistant", content}]
+let companionAutoDismissed = false;  // one-shot: dismiss after first action
 
 // ---------- API helpers ------------------------------------------------------
 
@@ -129,12 +131,90 @@ async function acceptScenario() {
     resetNarrationHistory();
     $("telemetry-log").innerHTML = "";
     show("game-screen");
+    resetCompanionChat(state.companion);
+    setCompanionPaneState("expanded");
+    companionAutoDismissed = false;
     $("action-input").focus();
   } catch (e) {
     alert("Accept failed: " + e.message);
   } finally {
     setBusy("setup-loading", ["btn-reroll", "btn-accept"], false);
   }
+}
+
+// ---------- Companion ----------------------------------------------------
+
+function setCompanionPaneState(state) {
+  // state: "expanded" | "collapsed" | "none"
+  document.body.classList.remove("companion-expanded", "companion-collapsed");
+  if (state === "expanded") document.body.classList.add("companion-expanded");
+  else if (state === "collapsed") document.body.classList.add("companion-collapsed");
+}
+
+function renderCompanionMeta(companion) {
+  if (!companion) return;
+  $("companion-avatar").textContent = companion.avatar || "🧭";
+  $("companion-name").textContent = companion.name || "Companion";
+  $("companion-persona").textContent = companion.persona || "";
+  $("companion-rail-avatar").textContent = companion.avatar || "🧭";
+}
+
+function appendCompanionMessage(role, content, opts = {}) {
+  const list = $("companion-messages");
+  const bubble = document.createElement("div");
+  bubble.className = "msg appear " + (role === "user" ? "msg-user" : "msg-companion");
+  if (opts.thinking) bubble.classList.add("thinking");
+  bubble.textContent = content;
+  list.appendChild(bubble);
+  list.scrollTop = list.scrollHeight;
+  return bubble;
+}
+
+function resetCompanionChat(companion) {
+  companionHistory = [];
+  $("companion-messages").innerHTML = "";
+  renderCompanionMeta(companion);
+  // Seed the chat with the companion's greeting.
+  if (companion && companion.greeting) {
+    appendCompanionMessage("assistant", companion.greeting);
+    companionHistory.push({ role: "assistant", content: companion.greeting });
+  }
+}
+
+async function askCompanion(question) {
+  const q = (question || "").trim();
+  if (!q) return;
+  // Show user bubble immediately + a thinking placeholder.
+  appendCompanionMessage("user", q);
+  companionHistory.push({ role: "user", content: q });
+  const thinkingEl = appendCompanionMessage("assistant", "…", { thinking: true });
+  setCompanionBusy(true);
+
+  try {
+    const { reply, companion } = await jpost("/api/companion/ask", {
+      question: q,
+      history: companionHistory.slice(0, -1),  // exclude the just-added user msg (server adds it)
+    });
+    // Replace the thinking bubble with the real reply.
+    thinkingEl.classList.remove("thinking");
+    thinkingEl.textContent = reply;
+    companionHistory.push({ role: "assistant", content: reply });
+    // Refresh meta in case difficulty/persona drifted (defensive).
+    if (companion) renderCompanionMeta(companion);
+  } catch (e) {
+    thinkingEl.classList.remove("thinking");
+    thinkingEl.textContent = "(I can't hear you right now: " + e.message + ")";
+  } finally {
+    setCompanionBusy(false);
+    $("companion-input").value = "";
+    $("companion-input").focus();
+  }
+}
+
+function setCompanionBusy(busy) {
+  $("btn-companion-ask").disabled = busy;
+  $("companion-input").disabled = busy;
+  document.querySelectorAll(".quick-prompt").forEach((b) => { b.disabled = busy; });
 }
 
 // ---------- Game screen ------------------------------------------------------
@@ -316,9 +396,11 @@ async function streamTelemetry(events, turnNumber) {
   turnBlock.className = "telemetry-turn appear";
   turnBlock.innerHTML = `<div class="turn-header">⚙ TELEMETRY :: TURN ${String(turnNumber).padStart(2, "0")}</div>`;
   container.appendChild(turnBlock);
+  turnBlock.scrollIntoView({ block: "nearest", behavior: "smooth" });
   for (const e of events) {
-    turnBlock.appendChild(renderTelemetryEvent(e));
-    container.scrollTop = container.scrollHeight;
+    const eventEl = renderTelemetryEvent(e);
+    turnBlock.appendChild(eventEl);
+    eventEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
     await new Promise((r) => setTimeout(r, 220));
   }
 }
@@ -337,6 +419,14 @@ async function submitAction(action, opts = {}) {
     ended = resp.ended;
     if (ended) {
       await endGame(resp.end_reason, resp.victory);
+    }
+    // Auto-dismiss the companion pane to its rail after the player's
+    // first action — they've started playing, they don't need the
+    // onboarding chat in their face anymore. They can summon it again
+    // anytime via the rail.
+    if (!companionAutoDismissed) {
+      companionAutoDismissed = true;
+      setCompanionPaneState("collapsed");
     }
   } catch (e) {
     alert("Turn failed: " + e.message);
@@ -386,7 +476,7 @@ function pushAutoActionEvent(action, model) {
       <span class="meta">auto-action ← ${escapeHtml(model)}  "${escapeHtml(action)}"</span>
     </div>`;
   container.appendChild(block);
-  container.scrollTop = container.scrollHeight;
+  block.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 async function swapNarrator(model) {
@@ -409,7 +499,7 @@ function pushRouterSwapEvent(model) {
       <span class="meta">narrator swapped → ${escapeHtml(model)}</span>
     </div>`;
   container.appendChild(block);
-  container.scrollTop = container.scrollHeight;
+  block.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 // ---------- MCP side pane ----------------------------------------------------
@@ -590,6 +680,12 @@ async function init() {
       r.checked = false;
     });
     $("scenario-card").classList.add("hidden");
+    // Clear companion + reset narration for the next playthrough.
+    setCompanionPaneState("none");
+    companionHistory = [];
+    companionAutoDismissed = false;
+    $("companion-messages").innerHTML = "";
+    resetNarrationHistory();
     show("setup-screen");
   });
 
@@ -607,6 +703,19 @@ async function init() {
   $("btn-prev-turn").addEventListener("click", () => navigateTurn(-1));
   $("btn-next-turn").addEventListener("click", () => navigateTurn(1));
 
+  // Companion chat
+  $("companion-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    askCompanion($("companion-input").value);
+  });
+  document.querySelectorAll(".quick-prompt").forEach((btn) => {
+    btn.addEventListener("click", () => askCompanion(btn.dataset.prompt));
+  });
+  $("btn-companion-collapse").addEventListener("click",
+    () => setCompanionPaneState("collapsed"));
+  $("btn-companion-expand").addEventListener("click",
+    () => setCompanionPaneState("expanded"));
+
   // MCP side pane
   $("btn-mcp-collapse").addEventListener("click", () => toggleMcpPane(true));
   $("btn-mcp-expand").addEventListener("click", () => toggleMcpPane(false));
@@ -620,6 +729,9 @@ async function init() {
 
   // initial inspector load so server info + tool list show up before any turn
   refreshInspector().catch((e) => console.warn("initial inspector load failed:", e));
+
+  // Start with the MCP pane collapsed — game takes full width by default.
+  toggleMcpPane(true);
 
   show("setup-screen");
   // No initial reroll — wait for the user to pick a difficulty.

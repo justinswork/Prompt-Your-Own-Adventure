@@ -15,35 +15,76 @@
   </header>
 
   <main>
-    <!-- Setup screen: scenario reroll -->
+    <!-- Setup screen: friendly welcome + two clear steps -->
     <section id="setup-screen" class="screen">
-      <h2>Phase 1 — Roll a Universe</h2>
-      <p class="hint" id="setup-hint">Pick a difficulty to roll your first scenario. Reroll until something hooks you.</p>
+      <div class="welcome">
+        <h2 class="welcome-title">Where will the dice take you?</h2>
+        <p class="welcome-sub">
+          A random text RPG. Each adventure is invented on the fly —
+          fresh genre, location, and quest. You have <strong>10 turns</strong> to complete it.
+        </p>
+      </div>
 
-      <div class="difficulty-row">
-        <span class="label">Difficulty</span>
-        <div class="difficulty-picker" id="difficulty-picker">
-          <label><input type="radio" name="difficulty" value="easy"><span>Easy</span></label>
-          <label><input type="radio" name="difficulty" value="normal"><span>Normal</span></label>
-          <label><input type="radio" name="difficulty" value="hard"><span>Hard</span></label>
-          <label><input type="radio" name="difficulty" value="nightmare"><span>Nightmare</span></label>
+      <div class="setup-step">
+        <span class="step-num">1</span>
+        <div class="step-body">
+          <h3 class="step-title">Choose a difficulty</h3>
+          <p class="step-hint">Affects how many enemies you'll face and how hard they hit.</p>
+          <div class="difficulty-picker" id="difficulty-picker">
+            <label>
+              <input type="radio" name="difficulty" value="easy">
+              <div class="diff-card">
+                <span class="diff-name diff-easy">Easy</span>
+                <span class="diff-blurb">Sparse threats. Gentle damage. Forgiving pacing.</span>
+              </div>
+            </label>
+            <label>
+              <input type="radio" name="difficulty" value="normal">
+              <div class="diff-card">
+                <span class="diff-name diff-normal">Normal</span>
+                <span class="diff-blurb">Modest enemies. Standard pacing. Risk, but fair.</span>
+              </div>
+            </label>
+            <label>
+              <input type="radio" name="difficulty" value="hard">
+              <div class="diff-card">
+                <span class="diff-name diff-hard">Hard</span>
+                <span class="diff-blurb">Frequent ambushes. Heavy hits. Choose carefully.</span>
+              </div>
+            </label>
+            <label>
+              <input type="radio" name="difficulty" value="nightmare">
+              <div class="diff-card">
+                <span class="diff-name diff-nightmare">Nightmare</span>
+                <span class="diff-blurb">Brutal. Coordinated threats. Death may find you fast.</span>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
 
-      <div id="scenario-card" class="scenario-card hidden">
-        <div class="row"><span class="label">Difficulty</span><span id="s-difficulty" class="difficulty-tag"></span></div>
-        <div class="row"><span class="label">Genre</span><span id="s-genre"></span></div>
-        <div class="row"><span class="label">Location</span><span id="s-location"></span></div>
-        <div class="row"><span class="label">Objective</span><span id="s-objective"></span></div>
-        <div class="row"><span class="label">Starting Items</span><ul id="s-items"></ul></div>
-        <div class="row"><span class="label">Starting Enemies</span><ul id="s-enemies"></ul></div>
-      </div>
+      <div class="setup-step" id="step-scenario">
+        <span class="step-num">2</span>
+        <div class="step-body">
+          <h3 class="step-title">Take or reroll your scenario</h3>
+          <p class="step-hint">Don't like what the dice gave you? Reroll until something hooks you.</p>
 
-      <div id="setup-loading" class="loading hidden">rolling new scenario…</div>
+          <div id="scenario-card" class="scenario-card hidden">
+            <div class="row"><span class="label">Difficulty</span><span id="s-difficulty" class="difficulty-tag"></span></div>
+            <div class="row"><span class="label">Genre</span><span id="s-genre"></span></div>
+            <div class="row"><span class="label">Location</span><span id="s-location"></span></div>
+            <div class="row"><span class="label">Objective</span><span id="s-objective"></span></div>
+            <div class="row"><span class="label">Starting Items</span><ul id="s-items"></ul></div>
+            <div class="row"><span class="label">Starting Enemies</span><ul id="s-enemies"></ul></div>
+          </div>
 
-      <div class="setup-actions">
-        <button id="btn-reroll" disabled>Reroll</button>
-        <button id="btn-accept" class="primary" disabled>Accept &amp; Play</button>
+          <div id="setup-loading" class="loading hidden">rolling new scenario…</div>
+
+          <div class="setup-actions">
+            <button id="btn-reroll" disabled>↻ Reroll</button>
+            <button id="btn-accept" class="primary" disabled>Begin Adventure →</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -138,6 +179,38 @@
   <footer>
     <span>browser ↔ <code>FastAPI</code> ↔ <code>FastMCP</code> server</span>
   </footer>
+
+  <!-- Fixed-position Companion sidebar on the LEFT, full viewport height -->
+  <aside id="companion-pane" class="companion-pane">
+    <div class="companion-header">
+      <span id="companion-avatar" class="companion-avatar">🧭</span>
+      <div class="companion-id">
+        <span id="companion-name" class="companion-name">Companion</span>
+        <span id="companion-persona" class="companion-persona"></span>
+      </div>
+      <button type="button" id="btn-companion-collapse" class="collapse-btn"
+              title="Dismiss companion (you can call them back anytime)">⟨</button>
+    </div>
+    <div id="companion-messages" class="companion-messages"></div>
+    <div class="companion-quick">
+      <button type="button" class="quick-prompt" data-prompt="Got any ideas for what I should do next?" title="Ask for action ideas">💡 Ideas</button>
+      <button type="button" class="quick-prompt" data-prompt="What's around me right now?" title="Ask about your surroundings">🗺️ Where</button>
+      <button type="button" class="quick-prompt" data-prompt="Tell me about what I'm carrying." title="Ask about your inventory">🎒 Items</button>
+      <button type="button" class="quick-prompt" data-prompt="What threats should I watch out for?" title="Ask about threats">⚠️ Threats</button>
+    </div>
+    <form id="companion-form" class="companion-form">
+      <input id="companion-input" type="text" autocomplete="off"
+             placeholder="Ask your companion anything…" />
+      <button type="submit" id="btn-companion-ask">Ask</button>
+    </form>
+  </aside>
+
+  <button type="button" id="btn-companion-expand"
+          class="companion-pane-rail"
+          title="Summon your companion">
+    <span id="companion-rail-avatar" class="rail-icon">🧭</span>
+    <span class="rail-text">A S K</span>
+  </button>
 
   <!-- Fixed-position MCP sidebar, peer of <main>, full viewport height -->
   <aside id="mcp-pane" class="mcp-pane">

@@ -27,13 +27,23 @@ html, body {
   line-height: 1.5;
 }
 
-/* Reserve viewport-right space for the fixed MCP sidebar. */
-:root { --mcp-pane-w: 400px; --mcp-rail-w: 44px; }
-body { padding-right: var(--mcp-pane-w); transition: padding-right 180ms ease; }
-body.mcp-collapsed { padding-right: var(--mcp-rail-w); }
+/* Reserve viewport-right space for the fixed MCP sidebar
+   and viewport-left space for the fixed Companion sidebar. */
+:root {
+  --mcp-pane-w: 400px; --mcp-rail-w: 44px;
+  --comp-pane-w: 360px; --comp-rail-w: 44px;
+}
+body {
+  padding-right: var(--mcp-pane-w);
+  padding-left: 0;
+  transition: padding-right 180ms ease, padding-left 180ms ease;
+}
+body.mcp-collapsed       { padding-right: var(--mcp-rail-w); }
+body.companion-expanded  { padding-left: var(--comp-pane-w); }
+body.companion-collapsed { padding-left: var(--comp-rail-w); }
 
 @media (max-width: 1080px) {
-  :root { --mcp-pane-w: 340px; }
+  :root { --mcp-pane-w: 340px; --comp-pane-w: 320px; }
 }
 
 header {
@@ -156,41 +166,121 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 
 .setup-actions { display: flex; gap: 10px; }
 
-/* Difficulty picker */
-.difficulty-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 12px 0 4px;
+/* Welcome banner */
+.welcome {
+  text-align: center;
+  padding: 24px 16px 8px;
+  margin-bottom: 18px;
 }
-.difficulty-picker {
-  display: flex;
-  gap: 6px;
+.welcome-title {
+  font-size: 28px;
+  margin: 0 0 10px;
+  letter-spacing: 0.3px;
+  color: var(--text);
 }
-.difficulty-picker label {
-  cursor: pointer;
+.welcome-sub {
+  color: var(--muted);
+  max-width: 640px;
+  margin: 0 auto;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.welcome-sub strong { color: var(--accent); font-weight: 600; }
+
+/* Numbered setup steps */
+.setup-step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  transition: opacity 200ms ease;
+}
+.step-num {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  user-select: none;
-  transition: background 120ms, border-color 120ms;
+  color: var(--accent);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
 }
-.difficulty-picker label:hover { background: #2a313c; }
+.step-body { flex: 1; min-width: 0; }
+.step-title {
+  margin: 2px 0 4px;
+  font-size: 16px;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.step-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+/* Dim step 2 until a difficulty is picked */
+#setup-screen:not(:has(input[name="difficulty"]:checked)) #step-scenario {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Difficulty cards (replaces the row of radio chips) */
+.difficulty-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .difficulty-picker { grid-template-columns: 1fr; }
+}
 .difficulty-picker input[type="radio"] {
   position: absolute;
   opacity: 0;
   pointer-events: none;
 }
-.difficulty-picker label:has(input:checked) {
+.difficulty-picker label {
+  cursor: pointer;
+  user-select: none;
+}
+.diff-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: background 120ms, border-color 120ms, transform 80ms;
+}
+.difficulty-picker label:hover .diff-card { background: #2a313c; border-color: #475063; }
+.difficulty-picker label:active .diff-card { transform: scale(0.99); }
+.difficulty-picker label:has(input:checked) .diff-card {
   border-color: var(--accent);
-  color: var(--accent);
   background: rgba(88, 166, 255, 0.08);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .difficulty-picker label:has(input:disabled) {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.diff-name {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.diff-blurb {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 #s-enemies li { margin-bottom: 6px; }
 
@@ -539,6 +629,161 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
   word-break: break-all;
   font-size: 11.5px;
   margin-top: 1px;
+}
+
+/* Companion sidebar — fixed to the left edge, full viewport height. */
+.companion-pane {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--comp-pane-w);
+  background: linear-gradient(180deg, rgba(210, 168, 255, 0.06) 0%, var(--panel) 100%);
+  border-right: 1px solid var(--border);
+  display: none;
+  flex-direction: column;
+  z-index: 50;
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.25);
+}
+body.companion-expanded .companion-pane { display: flex; }
+.companion-pane .companion-header {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #1a212c 0%, var(--panel) 100%);
+}
+
+/* Collapsed-pane rail (fixed to left viewport edge) */
+.companion-pane-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--comp-rail-w);
+  background: var(--panel-2);
+  border-right: 1px solid var(--border);
+  color: var(--magenta);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 16px 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  z-index: 50;
+}
+body.companion-collapsed .companion-pane-rail { display: flex; }
+.companion-pane-rail:hover { background: #2a313c; }
+.companion-pane-rail .rail-text {
+  writing-mode: vertical-rl;
+  letter-spacing: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.companion-pane-rail .rail-icon { font-size: 22px; }
+.companion-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.companion-avatar {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.companion-id {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.companion-name {
+  font-weight: 700;
+  color: var(--magenta);
+  font-size: 15px;
+  letter-spacing: 0.3px;
+}
+.companion-persona {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+.companion-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  min-height: 0;
+}
+.msg {
+  padding: 8px 12px;
+  border-radius: 10px;
+  max-width: 92%;
+  white-space: pre-wrap;
+}
+.msg-companion {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+  border-bottom-left-radius: 3px;
+}
+.msg-user {
+  background: rgba(88, 166, 255, 0.12);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  align-self: flex-end;
+  border-bottom-right-radius: 3px;
+  color: var(--text);
+}
+.msg-companion.thinking { font-style: italic; color: var(--muted); }
+
+.companion-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 4px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.quick-prompt {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 120ms, border-color 120ms;
+}
+.quick-prompt:hover:not(:disabled) {
+  background: #2a313c;
+  border-color: var(--magenta);
+  color: var(--magenta);
+}
+.quick-prompt:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.companion-form {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px 14px;
+  flex-shrink: 0;
+}
+.companion-form input[type="text"] {
+  flex: 1;
+  font-size: 13px;
+  padding: 7px 10px;
+}
+#btn-companion-ask {
+  padding: 7px 16px;
+  font-size: 13px;
 }
 
 .action-form {

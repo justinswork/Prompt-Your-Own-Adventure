@@ -9,5 +9,11 @@
   "inventory": [],
   "has_objective_item": false,
   "difficulty": "normal",
-  "enemies": []
+  "enemies": [],
+  "companion": {
+    "name": "",
+    "persona": "",
+    "avatar": "",
+    "greeting": ""
+  }
 }

@@ -49,7 +49,9 @@ from llm import (
     NARRATOR_CHOICES,
     ROUTER_MODEL,
     RULE_ENFORCER_MODEL,
+    companion_respond,
     generate_action,
+    generate_action_suggestions,
     generate_scenario,
     narrate,
     narrate_climax,
@@ -60,6 +62,19 @@ from llm import (
 # ---------- MCP tool wrappers --------------------------------------------------
 
 def _unwrap_tool_result(result: Any) -> dict:
+    # MCP error response: surface the server's error text instead of a
+    # generic "could not parse" — makes server-side schema/arg mismatches
+    # diagnosable from the orchestrator logs.
+    if getattr(result, "isError", False):
+        msgs = []
+        for block in getattr(result, "content", None) or []:
+            text = getattr(block, "text", None)
+            if text:
+                msgs.append(text)
+        raise RuntimeError(
+            "MCP tool error: " + (" | ".join(msgs) if msgs else "(no detail)")
+        )
+
     if hasattr(result, "structuredContent") and result.structuredContent:
         sc = result.structuredContent
         if isinstance(sc, dict) and "result" in sc and len(sc) == 1:
@@ -72,8 +87,10 @@ def _unwrap_tool_result(result: Any) -> dict:
                 try:
                     return json.loads(text)
                 except json.JSONDecodeError:
-                    continue
-    raise RuntimeError("Could not parse MCP tool result")
+                    # Last-ditch: surface the raw text so we can see what
+                    # the server actually said.
+                    raise RuntimeError(f"MCP tool returned non-JSON text: {text}")
+    raise RuntimeError("Could not parse MCP tool result (no content / structuredContent)")
 
 
 async def _recorded_call(
@@ -122,6 +139,7 @@ async def mcp_initialize_game(
         "starting_items": scenario["starting_items"],
         "difficulty": scenario.get("difficulty", "normal"),
         "starting_enemies": scenario.get("starting_enemies", []),
+        "companion": scenario.get("companion") or {},
     }
     return await _recorded_call(session, recent_calls, "initialize_game", args)
 
@@ -249,6 +267,13 @@ class Enemy(BaseModel):
     description: str = ""
 
 
+class Companion(BaseModel):
+    name: str = ""
+    persona: str = ""
+    avatar: str = ""
+    greeting: str = ""
+
+
 class Scenario(BaseModel):
     genre: str
     location: str
@@ -256,6 +281,7 @@ class Scenario(BaseModel):
     starting_items: list[str]
     difficulty: str = "normal"
     starting_enemies: list[Enemy] = []
+    companion: Companion = Companion()
 
 
 class ScenarioRequest(BaseModel):
@@ -268,6 +294,16 @@ class TurnRequest(BaseModel):
 
 class SwapRequest(BaseModel):
     model: str
+
+
+class CompanionMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class CompanionAskRequest(BaseModel):
+    question: str
+    history: list[CompanionMessage] = []
 
 
 # ---------- Routes -------------------------------------------------------------
@@ -476,6 +512,35 @@ async def auto_action(request: Request):
     except Exception as e:
         raise HTTPException(500, f"auto-action generation failed: {e}")
     return {"action": action, "model": ROUTER_MODEL}
+
+
+@app.post("/api/suggestions")
+async def suggestions(request: Request):
+    mcp: ClientSession = request.app.state.mcp
+    state = await mcp_get_world_state(mcp, request.app.state.recent_calls)
+    try:
+        sugg = await asyncio.to_thread(generate_action_suggestions, state)
+    except Exception as e:
+        raise HTTPException(500, f"suggestion generation failed: {e}")
+    return {"suggestions": sugg, "model": ROUTER_MODEL}
+
+
+@app.post("/api/companion/ask")
+async def companion_ask(req: CompanionAskRequest, request: Request):
+    mcp: ClientSession = request.app.state.mcp
+    state = await mcp_get_world_state(mcp, request.app.state.recent_calls)
+    history = [m.model_dump() for m in req.history]
+    try:
+        reply = await asyncio.to_thread(
+            companion_respond, state, history, req.question
+        )
+    except Exception as e:
+        raise HTTPException(500, f"companion response failed: {e}")
+    return {
+        "reply": reply,
+        "companion": state.get("companion", {}),
+        "model": ROUTER_MODEL,
+    }
 
 
 @app.post("/api/climax")
