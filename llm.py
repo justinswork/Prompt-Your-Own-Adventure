@@ -184,12 +184,28 @@ def generate_scenario(difficulty: str = "normal") -> dict:
         "Must be an object with:\n"
         '       name      (short, memorable, thematic to the genre — '
         "e.g. 'Wick' for fantasy, 'A.R.I.' for cyberpunk, 'Doc' for "
-        "weird west)\n"
-        '       avatar    (single emoji that fits them — 🕯️ 🤖 🦊 🪐 👁️ etc.)\n'
-        '       persona   (one sentence describing who/what they are '
-        "and their distinctive voice)\n"
+        "weird west). Vary widely across calls — surprise me.\n"
+        '       avatar    (single emoji that fits them — 🕯️ 🤖 🦊 🪐 👁️ '
+        "🦉 🐉 🗡️ 🃏 🌑 🔮 🪶 🤺 🐍 🪲 🧿 🪐 ⚙️ 🪷 🦇 etc. Match the "
+        "character, not a default)\n"
+        '       persona   (ONE vivid sentence that paints WHO or WHAT the '
+        "companion is — their form, manner, voice quirks, and origin. "
+        "Be CONCRETE and SPECIFIC. Do NOT use generic phrases like "
+        "'a friendly guide' or 'a wise mentor'. Examples of GOOD "
+        "personas:\n"
+        '         - "An ancient candle-flame spirit bound to a brass '
+        "lantern, who speaks in archaic proverbs and pet names\"\n"
+        '         - "A wise-cracking neural implant welded to your '
+        "collarbone, fluent in street slang and corporate snark\"\n"
+        '         - "A nameless raven with too many eyes, who can only '
+        "speak in questions and quotations from a book you've never read\"\n"
+        '         - "A retired gunslinger ghost in a moth-eaten duster, '
+        "drunk on whiskey he cannot taste\"\n"
+        "       Match the genre. Make each persona DISTINCT — they "
+        "should feel like a person/entity with a backstory, not a "
+        "role label.)\n"
         '       intro     (a 3-5 sentence in-character welcome that:\n'
-        "                  1) introduces who they are\n"
+        "                  1) introduces who they are in their own voice\n"
         "                  2) vividly evokes the starting LOCATION and "
         "the world's atmosphere\n"
         "                  3) restates the OBJECTIVE in their own voice\n"
