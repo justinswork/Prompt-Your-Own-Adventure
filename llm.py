@@ -74,10 +74,52 @@ def _ensure_anthropic() -> Anthropic:
 # ---------- LLM calls ---------------------------------------------------------
 
 DIFFICULTY_PROFILES = {
-    "easy":      {"starting_enemies": (0, 1), "enemy_hp": (6, 14),  "tone": "light"},
-    "normal":    {"starting_enemies": (1, 2), "enemy_hp": (12, 22), "tone": "tense"},
-    "hard":      {"starting_enemies": (2, 3), "enemy_hp": (22, 36), "tone": "menacing"},
-    "nightmare": {"starting_enemies": (3, 4), "enemy_hp": (35, 55), "tone": "oppressive"},
+    "easy": {
+        "starting_enemies": (0, 1),
+        "enemy_hp": (6, 14),
+        "tone": "light",
+        "scope": "small and local — the objective item is in or right next to the starting location, reachable within 2-4 turns of focused play",
+        "objective_bias": (
+            "GENEROUS. Grant has_objective_item=true on the FIRST genuinely "
+            "plausible attempt to acquire or even APPROACH the objective. "
+            "If by turn 4 the player still hasn't acquired it, lean harder "
+            "toward granting it on any reasonable progress-related action. "
+            "Easy-mode players should reliably win in 10 turns."
+        ),
+    },
+    "normal": {
+        "starting_enemies": (1, 2),
+        "enemy_hp": (12, 22),
+        "tone": "tense",
+        "scope": "modest — the objective is achievable by exploring 1-2 nearby areas",
+        "objective_bias": (
+            "REWARD CLEAR ATTEMPTS. Set has_objective_item=true when the "
+            "player makes any deliberate, plausible move toward the goal. "
+            "Don't be stingy — normal difficulty should be winnable in 10 "
+            "turns by a player who's paying attention."
+        ),
+    },
+    "hard": {
+        "starting_enemies": (2, 3),
+        "enemy_hp": (22, 36),
+        "tone": "menacing",
+        "scope": "complex — multiple areas, real obstacles between the player and the objective",
+        "objective_bias": (
+            "BE DEMANDING. Require the player to overcome a real obstacle "
+            "or piece something together before granting the objective. "
+            "Still allow a win within 10 turns for thoughtful, focused play."
+        ),
+    },
+    "nightmare": {
+        "starting_enemies": (3, 4),
+        "enemy_hp": (35, 55),
+        "tone": "oppressive",
+        "scope": "intricate — the objective is gated by significant obstacles, threats, and twists",
+        "objective_bias": (
+            "BE BRUTAL. Only the most clever, multi-step approaches succeed. "
+            "Most attempts should fail. Victory is rare and earned."
+        ),
+    },
 }
 
 # How helpful the companion is, parametrized by difficulty. Threaded into
@@ -149,7 +191,10 @@ def generate_scenario(difficulty: str = "normal") -> dict:
         '       greeting  (their first line to the player, 1-3 sentences, '
         "in-character, welcoming, hints they're available for questions)\n"
         f"The companion's helpfulness MUST match this profile for the "
-        f"'{difficulty}' difficulty: {helpfulness}\n"
+        f"'{difficulty}' difficulty: {helpfulness}\n\n"
+        f"OBJECTIVE SCOPE: {profile['scope']}. Calibrate the objective "
+        f"accordingly — it must be achievable within the 10-turn budget at "
+        f"this difficulty.\n\n"
         f"On easy mode include 0–1 weak enemies, on nightmare include "
         f"3–4 deadly ones. Match enemies and companion thematically to "
         f"the genre."
@@ -363,6 +408,10 @@ async def rule_enforcer_agent(
         "nightmare": "Be brutal. Damage from threats is 15-35. Enemies coordinate. Spawn new enemies almost every turn; ambush is common.",
     }
     diff_note = difficulty_notes.get(difficulty, difficulty_notes["normal"])
+    profile = DIFFICULTY_PROFILES.get(difficulty, DIFFICULTY_PROFILES["normal"])
+    objective_bias = profile["objective_bias"]
+    has_objective = bool(state.get("has_objective_item"))
+    turn_count = state.get("player_status", {}).get("turn_count", 0)
 
     system = (
         "You are the Rule Enforcer agent for a turn-based text RPG.\n\n"
@@ -393,9 +442,20 @@ async def rule_enforcer_agent(
         f"DIFFICULTY: {difficulty} — {diff_note}\n\n"
         f"Enemies currently at player's location: "
         f"{json.dumps(enemies_here) if enemies_here else 'none'}\n\n"
-        "Be fair but consequential. If the player's action plausibly "
-        "recovers the objective item, set has_objective_item=true on "
-        "the mutation. Never set it back to false."
+        f"OBJECTIVE STATUS: "
+        + (
+            "already acquired — focus on survival and any remaining "
+            "narrative beats."
+            if has_objective
+            else f"NOT yet acquired (turn {turn_count}/10). "
+                 f"Objective-grant bias for this difficulty: "
+                 f"{objective_bias}"
+        )
+        + "\n\n"
+        "Be fair but consequential. When the player attempts something "
+        "that plausibly recovers the objective item under the bias above, "
+        "set has_objective_item=true on the mutation. Never set it back "
+        "to false once true."
     )
     user_msg = (
         f"Current world state:\n{json.dumps(state, indent=2)}\n\n"

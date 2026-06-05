@@ -237,7 +237,14 @@ function renderState(state) {
   $("turn").textContent = state.player_status.turn_count;
   $("location").textContent = state.current_location;
   $("genre").textContent = state.genre;
-  $("objective").textContent = state.objective;
+  const objEl = $("objective");
+  if (state.has_objective_item) {
+    objEl.innerHTML =
+      `<span class="objective-done" title="Objective complete!">✓</span> `
+      + escapeHtml(state.objective);
+  } else {
+    objEl.textContent = state.objective;
+  }
   const invEl = $("inventory");
   invEl.innerHTML = "";
   if (state.inventory.length === 0) {
@@ -619,25 +626,120 @@ async function invokeManually() {
 async function endGame(reason, _victory) {
   try {
     const r = await jpost("/api/climax");
+    const isVictory = r.victory;
+    const state = r.state;
     const headline = $("end-headline");
-    if (r.victory) {
-      headline.textContent = "✦ VICTORY ✦";
-      headline.className = "victory";
+    const subtitle = $("end-subtitle");
+
+    headline.classList.remove("victory", "defeat");
+    headline.classList.add(isVictory ? "victory" : "defeat");
+
+    if (isVictory) {
+      headline.textContent = "V I C T O R Y";
+      subtitle.textContent =
+        `Your ${state.genre || "improbable"} quest ends in triumph.`;
+    } else if (reason === "health") {
+      headline.textContent = "Y O U   D I E D";
+      subtitle.textContent =
+        `Your wounds proved too much. The ${state.genre || "world"} swallows you whole.`;
     } else {
-      headline.textContent = "✦ GAME OVER ✦";
-      headline.className = "defeat";
+      headline.textContent = "T I M E ' S   U P";
+      subtitle.textContent =
+        "Ten turns gone. The objective slips from your grasp.";
     }
+
     $("end-narration").textContent = r.narration;
-    $("end-stats").textContent =
-      `final hp=${r.state.player_status.health}  ` +
-      `turns=${r.state.player_status.turn_count}  ` +
-      `objective_item=${r.state.has_objective_item}  ` +
-      `inventory=[${r.state.inventory.join(", ")}]  ` +
-      `reason=${reason}  narrator=${r.narrator_model}`;
+
+    renderEndStatCards(state, r.narrator_model, isVictory);
     show("end-screen");
   } catch (e) {
     alert("Climax narration failed: " + e.message);
   }
+}
+
+function renderEndStatCards(state, narratorModel, victory) {
+  const grid = $("end-stats-grid");
+  grid.innerHTML = "";
+
+  const hp = state.player_status.health;
+  const hpPct = Math.max(0, Math.min(100, hp));
+  const turns = state.player_status.turn_count;
+  const inv = state.inventory || [];
+  const companion = state.companion || {};
+  const difficulty = state.difficulty || "normal";
+
+  const cards = [
+    {
+      icon: "❤",
+      label: "Final Health",
+      value: `${hp}/100`,
+      bar: hpPct,
+    },
+    {
+      icon: "⏱",
+      label: "Turns Survived",
+      value: `${turns} / 10`,
+    },
+    {
+      icon: "🎯",
+      label: "Objective",
+      value: victory ? "✓ Recovered" : "✗ Not recovered",
+      cls: victory ? "good" : "bad",
+    },
+    {
+      icon: "🧭",
+      label: "Difficulty",
+      value: difficulty.charAt(0).toUpperCase() + difficulty.slice(1),
+    },
+    {
+      icon: "🎒",
+      label: "Inventory",
+      value: inv.length
+        ? `${inv.length} item${inv.length === 1 ? "" : "s"}`
+        : "Empty",
+      detail: inv.length ? inv.join(", ") : "",
+    },
+    {
+      icon: companion.avatar || "🤝",
+      label: "Companion",
+      value: companion.name || "—",
+      detail: companion.persona ? truncate(companion.persona, 70) : "",
+    },
+    {
+      icon: "📖",
+      label: "Narrator",
+      value: narratorModel || "—",
+    },
+    {
+      icon: "🌍",
+      label: "World",
+      value: state.genre || "—",
+      detail: truncate(state.current_location || "", 70),
+    },
+  ];
+
+  cards.forEach((c, i) => {
+    const card = document.createElement("div");
+    card.className = "stat-card" + (c.cls ? " " + c.cls : "");
+    card.style.setProperty("--i", i);
+    let html = `
+      <span class="stat-icon">${escapeHtml(c.icon)}</span>
+      <div class="stat-meta">
+        <span class="stat-label">${escapeHtml(c.label)}</span>
+        <span class="stat-value">${escapeHtml(c.value)}</span>
+        ${c.detail ? `<span class="stat-detail">${escapeHtml(c.detail)}</span>` : ""}
+      </div>`;
+    if (typeof c.bar === "number") {
+      html += `<div class="stat-bar"><div class="stat-bar-fill" style="width:${c.bar}%"></div></div>`;
+    }
+    card.innerHTML = html;
+    grid.appendChild(card);
+  });
+}
+
+function truncate(s, n) {
+  if (!s) return "";
+  return s.length <= n ? s : s.slice(0, n - 1) + "…";
 }
 
 // ---------- Bootstrap --------------------------------------------------------
