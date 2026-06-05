@@ -1271,7 +1271,7 @@ body.companion-collapsed .companion-pane-rail { display: flex; }
   transition: width 600ms 600ms ease-out;
 }
 
-/* Mega restart button */
+/* Mega restart button + end-screen action row */
 .mega-btn {
   font-size: 15px;
   padding: 12px 28px;
@@ -1279,6 +1279,64 @@ body.companion-collapsed .companion-pane-rail { display: flex; }
   margin-top: 8px;
   animation: fade-in 400ms 800ms both;
 }
+.end-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.secondary-btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.secondary-btn:hover:not(:disabled) {
+  background: #2a313c;
+  border-color: var(--magenta);
+  color: var(--magenta);
+}
+
+/* Review-mode banner shown on game-screen while reviewing past turns */
+.review-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(180deg, rgba(210, 168, 255, 0.18) 0%, rgba(210, 168, 255, 0.06) 100%);
+  border: 1px solid var(--magenta);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.review-banner-text { color: var(--text); }
+.review-back-btn {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.review-back-btn:hover {
+  background: #2a313c;
+  border-color: var(--magenta);
+  color: var(--magenta);
+}
+
+/* Read-only treatment when reviewing — hide action input + companion */
+body.review-mode #action-form,
+body.review-mode #turn-loading,
+body.review-mode .companion-pane,
+body.review-mode .companion-pane-rail {
+  display: none !important;
+}
+body.review-mode #insp-call { display: none; }
+body.review-mode #insp-args { pointer-events: none; opacity: 0.6; }
 
 /* fade-in for new content */
 .appear { animation: fade-in 200ms ease-out; }

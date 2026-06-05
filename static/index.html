@@ -139,6 +139,14 @@
 
     <!-- Game screen -->
     <section id="game-screen" class="screen hidden">
+      <div id="review-banner" class="review-banner hidden">
+        <span class="review-banner-text">
+          📖 Review mode — viewing your past adventure. Use ‹ Prev / Next › to step through turns.
+        </span>
+        <button type="button" id="btn-exit-review" class="review-back-btn">
+          ← Back to results
+        </button>
+      </div>
       <div class="game-dashboard">
         <div class="dash-col">
           <h4 class="dash-title">You</h4>
@@ -234,7 +242,14 @@
         <div id="end-stats-grid" class="stats-grid"></div>
       </div>
 
-      <button id="btn-restart" class="primary mega-btn">Begin a New Adventure →</button>
+      <div class="end-actions">
+        <button id="btn-review-turns" class="mega-btn secondary-btn">
+          📖 Review your adventure
+        </button>
+        <button id="btn-restart" class="primary mega-btn">
+          Begin a New Adventure →
+        </button>
+      </div>
     </section>
   </main>
 

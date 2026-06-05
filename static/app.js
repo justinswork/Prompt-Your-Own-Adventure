@@ -739,6 +739,26 @@ async function invokeManually() {
   await refreshInspector();
 }
 
+// ---------- Review mode ------------------------------------------------------
+
+function enterReviewMode() {
+  document.body.classList.add("review-mode");
+  $("review-banner").classList.remove("hidden");
+  // Reset to the first turn so the player can walk forward through the
+  // narration the same way they experienced it.
+  if (turnHistory.length > 0) {
+    viewIndex = 0;
+    renderCurrentTurn();
+  }
+  show("game-screen");
+}
+
+function exitReviewMode() {
+  document.body.classList.remove("review-mode");
+  $("review-banner").classList.add("hidden");
+  show("end-screen");
+}
+
 // ---------- Climax screen ----------------------------------------------------
 
 async function endGame(reason, _victory) {
@@ -900,8 +920,10 @@ async function init() {
       r.checked = false;
     });
     $("scenario-card").classList.add("hidden");
-    // Clear companion + reset narration for the next playthrough.
+    // Clear companion + reset narration + review-mode for the next playthrough.
     setCompanionPaneState("none");
+    document.body.classList.remove("review-mode");
+    $("review-banner").classList.add("hidden");
     companionHistory = [];
     companionTaken = false;
     pendingState = null;
@@ -924,6 +946,10 @@ async function init() {
   $("btn-take-companion").addEventListener("click", () => chooseCompanion(true));
   $("btn-leave-companion").addEventListener("click", () => chooseCompanion(false));
   $("btn-begin-adventure").addEventListener("click", beginAdventure);
+
+  // Review mode (from end screen back into game view, read-only)
+  $("btn-review-turns").addEventListener("click", enterReviewMode);
+  $("btn-exit-review").addEventListener("click", exitReviewMode);
   $("btn-back-to-setup").addEventListener("click", () => {
     // Drop the accepted-but-not-started scenario and let the player
     // reroll / change difficulty. The setup screen preserves their
