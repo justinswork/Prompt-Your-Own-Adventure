@@ -38,8 +38,13 @@ def _read_state() -> dict:
     state.setdefault("difficulty", "normal")
     state.setdefault("enemies", [])
     state.setdefault("companion", {
-        "name": "", "persona": "", "avatar": "", "greeting": ""
+        "name": "", "persona": "", "avatar": "", "intro": ""
     })
+    # Migration: older state files may have "greeting" — preserve as intro if intro is empty
+    comp = state.get("companion") or {}
+    if "intro" not in comp:
+        comp["intro"] = comp.get("greeting", "")
+        state["companion"] = comp
     return state
 
 
@@ -118,7 +123,7 @@ def initialize_game(
                 "name": str((companion or {}).get("name", "")),
                 "persona": str((companion or {}).get("persona", "")),
                 "avatar": str((companion or {}).get("avatar", "")),
-                "greeting": str((companion or {}).get("greeting", "")),
+                "intro": str((companion or {}).get("intro", "")),
             },
         }
         if starting_enemies:

@@ -88,6 +88,54 @@
       </div>
     </section>
 
+    <!-- Companion intro screen — between setup and game -->
+    <section id="intro-screen" class="screen hidden">
+      <button type="button" id="btn-back-to-setup" class="back-link"
+              title="Back to the difficulty / scenario selection">
+        ← Try a different adventure
+      </button>
+      <div class="intro-hero">
+        <div id="intro-avatar" class="intro-avatar">🧭</div>
+        <h2 id="intro-name" class="intro-name">Companion</h2>
+        <p id="intro-persona" class="intro-persona"></p>
+
+        <div class="reliability-block">
+          <div class="reliability-header">
+            <span class="reliability-label">Reliability</span>
+            <span class="reliability-value">
+              <span id="reliability-score">7</span><span class="reliability-out-of">/10</span>
+            </span>
+            <span id="reliability-tag" class="reliability-tag"></span>
+          </div>
+          <div id="reliability-dots" class="reliability-dots"></div>
+        </div>
+      </div>
+
+      <div class="intro-scene">
+        <p id="intro-message" class="intro-message"></p>
+      </div>
+
+      <div class="intro-choice">
+        <p class="intro-question">Will you take this companion with you?</p>
+        <div class="intro-choice-buttons">
+          <button type="button" id="btn-take-companion" class="intro-choice-btn">
+            <span class="choice-emoji">🤝</span>
+            <span class="choice-label">Yes, travel together</span>
+            <span class="choice-sub">Companion stays available, minimized — summon them anytime</span>
+          </button>
+          <button type="button" id="btn-leave-companion" class="intro-choice-btn">
+            <span class="choice-emoji">🚶</span>
+            <span class="choice-label">No, I'll go alone</span>
+            <span class="choice-sub">Companion is dismissed — no questions, no hints, no help</span>
+          </button>
+        </div>
+      </div>
+
+      <button type="button" id="btn-begin-adventure" class="primary mega-btn" disabled>
+        Begin Adventure →
+      </button>
+    </section>
+
     <!-- Game screen -->
     <section id="game-screen" class="screen hidden">
       <div class="game-dashboard">

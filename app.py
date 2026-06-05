@@ -271,7 +271,7 @@ class Companion(BaseModel):
     name: str = ""
     persona: str = ""
     avatar: str = ""
-    greeting: str = ""
+    intro: str = ""
 
 
 class Scenario(BaseModel):

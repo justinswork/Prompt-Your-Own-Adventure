@@ -8,7 +8,8 @@ let currentNarrator = null;     // active narrator model
 let turnHistory = [];           // [{turn, action, prose, fromAuto}]
 let viewIndex = -1;             // index into turnHistory currently shown
 let companionHistory = [];      // [{role: "user"|"assistant", content}]
-let companionAutoDismissed = false;  // one-shot: dismiss after first action
+let companionTaken = false;     // did the player take the companion at intro?
+let pendingState = null;        // game state held while on intro screen
 
 // ---------- API helpers ------------------------------------------------------
 
@@ -127,29 +128,92 @@ async function acceptScenario() {
   setBusy("setup-loading", ["btn-reroll", "btn-accept"], true);
   try {
     const { state } = await jpost("/api/accept", currentScenario);
-    renderState(state);
-    resetNarrationHistory();
-    $("telemetry-log").innerHTML = "";
-    show("game-screen");
-    resetCompanionChat(state.companion);
-    setCompanionPaneState("expanded");
-    companionAutoDismissed = false;
-    $("action-input").focus();
-
-    // If the autoplay box was already ticked (carried over from a prior
-    // game, or pre-set by the user), the change event won't fire on
-    // accept — kick off the first turn explicitly. Brief delay so the
-    // player can see the opening state and the companion's greeting
-    // before the bots take over.
-    if ($("cb-autoplay").checked) {
-      setTimeout(() => {
-        if ($("cb-autoplay").checked) autoAction();
-      }, 1200);
-    }
+    pendingState = state;
+    populateIntroScreen(state.companion || {}, state.difficulty);
+    show("intro-screen");
   } catch (e) {
     alert("Accept failed: " + e.message);
   } finally {
     setBusy("setup-loading", ["btn-reroll", "btn-accept"], false);
+  }
+}
+
+const RELIABILITY_BY_DIFFICULTY = {
+  easy:      { score: 9, label: "Trustworthy",     color: "#4ade80" },
+  normal:    { score: 6, label: "Mostly reliable", color: "#58a6ff" },
+  hard:      { score: 4, label: "Cryptic",         color: "#f0883e" },
+  nightmare: { score: 2, label: "Unreliable",      color: "#f85149" },
+};
+
+function renderReliability(difficulty) {
+  const r = RELIABILITY_BY_DIFFICULTY[difficulty]
+    || RELIABILITY_BY_DIFFICULTY.normal;
+  $("reliability-score").textContent = r.score;
+  const tag = $("reliability-tag");
+  tag.textContent = r.label;
+  tag.style.color = r.color;
+  const dotsEl = $("reliability-dots");
+  dotsEl.innerHTML = "";
+  for (let i = 1; i <= 10; i++) {
+    const dot = document.createElement("span");
+    dot.className = "reliability-dot";
+    if (i <= r.score) {
+      dot.style.background = r.color;
+      dot.style.borderColor = r.color;
+    }
+    dotsEl.appendChild(dot);
+  }
+}
+
+function populateIntroScreen(companion, difficulty) {
+  $("intro-avatar").textContent = companion.avatar || "🧭";
+  $("intro-name").textContent = companion.name || "Companion";
+  $("intro-persona").textContent = companion.persona || "";
+  $("intro-message").textContent = companion.intro ||
+    "Hello, traveler. The road ahead is yours to walk — I'll be here if you need to ask anything along the way.";
+  renderReliability(difficulty || "normal");
+  // Reset choice state on each visit
+  companionTaken = false;
+  $("btn-take-companion").classList.remove("selected");
+  $("btn-leave-companion").classList.remove("selected");
+  $("btn-begin-adventure").disabled = true;
+}
+
+function chooseCompanion(take) {
+  companionTaken = take;
+  $("btn-take-companion").classList.toggle("selected", take);
+  $("btn-leave-companion").classList.toggle("selected", !take);
+  $("btn-begin-adventure").disabled = false;
+}
+
+function beginAdventure() {
+  if (!pendingState) return;
+  const state = pendingState;
+  renderState(state);
+  resetNarrationHistory();
+  $("telemetry-log").innerHTML = "";
+  show("game-screen");
+
+  if (companionTaken) {
+    // Take companion → minimize to rail. Chat starts empty (intro was on
+    // the prior screen); user can summon by clicking the rail.
+    resetCompanionChat(state.companion);
+    setCompanionPaneState("collapsed");
+  } else {
+    // Solo → no companion infrastructure for this game.
+    companionHistory = [];
+    $("companion-messages").innerHTML = "";
+    setCompanionPaneState("none");
+  }
+
+  $("action-input").focus();
+
+  // If autoplay was on, kick off the first turn after a brief delay so
+  // the player can take in the game state before the bots take over.
+  if ($("cb-autoplay").checked) {
+    setTimeout(() => {
+      if ($("cb-autoplay").checked) autoAction();
+    }, 1200);
   }
 }
 
@@ -185,11 +249,9 @@ function resetCompanionChat(companion) {
   companionHistory = [];
   $("companion-messages").innerHTML = "";
   renderCompanionMeta(companion);
-  // Seed the chat with the companion's greeting.
-  if (companion && companion.greeting) {
-    appendCompanionMessage("assistant", companion.greeting);
-    companionHistory.push({ role: "assistant", content: companion.greeting });
-  }
+  // No greeting bubble — the companion already introduced themselves on
+  // the intro screen. Chat starts empty; the user opens the pane and
+  // asks if/when they want to.
 }
 
 async function askCompanion(question) {
@@ -437,14 +499,6 @@ async function submitAction(action, opts = {}) {
     ended = resp.ended;
     if (ended) {
       await endGame(resp.end_reason, resp.victory);
-    }
-    // Auto-dismiss the companion pane to its rail after the player's
-    // first action — they've started playing, they don't need the
-    // onboarding chat in their face anymore. They can summon it again
-    // anytime via the rail.
-    if (!companionAutoDismissed) {
-      companionAutoDismissed = true;
-      setCompanionPaneState("collapsed");
     }
   } catch (e) {
     alert("Turn failed: " + e.message);
@@ -796,7 +850,8 @@ async function init() {
     // Clear companion + reset narration for the next playthrough.
     setCompanionPaneState("none");
     companionHistory = [];
-    companionAutoDismissed = false;
+    companionTaken = false;
+    pendingState = null;
     $("companion-messages").innerHTML = "";
     resetNarrationHistory();
     show("setup-screen");
@@ -810,6 +865,19 @@ async function init() {
       $("btn-reroll").disabled = false;
       rerollScenario();
     });
+  });
+
+  // Intro screen choice + begin + back
+  $("btn-take-companion").addEventListener("click", () => chooseCompanion(true));
+  $("btn-leave-companion").addEventListener("click", () => chooseCompanion(false));
+  $("btn-begin-adventure").addEventListener("click", beginAdventure);
+  $("btn-back-to-setup").addEventListener("click", () => {
+    // Drop the accepted-but-not-started scenario and let the player
+    // reroll / change difficulty. The setup screen preserves their
+    // last selection.
+    pendingState = null;
+    companionTaken = false;
+    show("setup-screen");
   });
 
   // Narration pagination

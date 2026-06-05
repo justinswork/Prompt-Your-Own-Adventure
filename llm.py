@@ -188,10 +188,19 @@ def generate_scenario(difficulty: str = "normal") -> dict:
         '       avatar    (single emoji that fits them — 🕯️ 🤖 🦊 🪐 👁️ etc.)\n'
         '       persona   (one sentence describing who/what they are '
         "and their distinctive voice)\n"
-        '       greeting  (their first line to the player, 1-3 sentences, '
-        "in-character, welcoming, hints they're available for questions)\n"
-        f"The companion's helpfulness MUST match this profile for the "
-        f"'{difficulty}' difficulty: {helpfulness}\n\n"
+        '       intro     (a 3-5 sentence in-character welcome that:\n'
+        "                  1) introduces who they are\n"
+        "                  2) vividly evokes the starting LOCATION and "
+        "the world's atmosphere\n"
+        "                  3) restates the OBJECTIVE in their own voice\n"
+        "                  4) acknowledges, IN-CHARACTER and themed to "
+        "the genre, how reliable / helpful they will be — calibrated to "
+        "the difficulty profile below. e.g. on nightmare, a candle-spirit "
+        "might say 'my flame lies as often as it lights'; a cyberpunk AI "
+        "on easy might say 'I've got your back, choom — full uplink to "
+        "the wire')\n"
+        f"The companion's helpfulness profile for '{difficulty}' "
+        f"difficulty: {helpfulness}\n\n"
         f"OBJECTIVE SCOPE: {profile['scope']}. Calibrate the objective "
         f"accordingly — it must be achievable within the 10-turn budget at "
         f"this difficulty.\n\n"
@@ -233,8 +242,12 @@ def generate_scenario(difficulty: str = "normal") -> dict:
         "persona": str(raw_comp.get("persona", "")).strip()
             or "A laconic guide who travels with you.",
         "avatar": str(raw_comp.get("avatar", "")).strip() or "🧭",
-        "greeting": str(raw_comp.get("greeting", "")).strip()
-            or "I'm here if you need me. Ask away.",
+        "intro": str(
+            raw_comp.get("intro") or raw_comp.get("greeting") or ""
+        ).strip() or (
+            "Hello, traveler. The road ahead is yours to walk — "
+            "I'll be here if you need to ask anything along the way."
+        ),
     }
 
     data["difficulty"] = difficulty
