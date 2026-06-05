@@ -782,8 +782,9 @@ async function endGame(reason, _victory) {
         `Your wounds proved too much. The ${state.genre || "world"} swallows you whole.`;
     } else {
       headline.textContent = "T I M E ' S   U P";
+      const n = state.max_turns || 10;
       subtitle.textContent =
-        "Ten turns gone. The objective slips from your grasp.";
+        `${n} turns gone. The objective slips from your grasp.`;
     }
 
     $("end-narration").textContent = r.narration;

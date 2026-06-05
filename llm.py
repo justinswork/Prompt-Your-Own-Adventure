@@ -79,13 +79,15 @@ DIFFICULTY_PROFILES = {
         "enemy_hp": (6, 14),
         "tone": "light",
         "max_turns": 10,
-        "scope": "small and local — the objective item is in or right next to the starting location, reachable within 2-4 turns of focused play",
+        "min_objective_turn": 3,
+        "scope": "small and local — the objective item is in or right next to the starting location, reachable within 3-5 turns of focused play",
         "objective_bias": (
-            "GENEROUS. Grant has_objective_item=true on the FIRST genuinely "
-            "plausible attempt to acquire or even APPROACH the objective. "
-            "If by turn 4 the player still hasn't acquired it, lean harder "
-            "toward granting it on any reasonable progress-related action. "
-            "Easy-mode players should reliably win in their turn budget."
+            "LENIENT but not instant. Grant has_objective_item=true on "
+            "the next genuinely plausible attempt AFTER the player has "
+            "had at least a couple of turns to act. If by turn 6 they "
+            "still haven't acquired it, lean strongly toward granting "
+            "it on any reasonable progress-related action. Easy-mode "
+            "players should reliably win in their turn budget."
         ),
     },
     "normal": {
@@ -93,12 +95,15 @@ DIFFICULTY_PROFILES = {
         "enemy_hp": (12, 22),
         "tone": "tense",
         "max_turns": 10,
-        "scope": "modest — the objective is achievable by exploring 1-2 nearby areas",
+        "min_objective_turn": 4,
+        "scope": "modest — the objective is achievable by exploring 1-2 nearby areas after dealing with at least one obstacle or enemy",
         "objective_bias": (
-            "REWARD CLEAR ATTEMPTS. Set has_objective_item=true when the "
-            "player makes any deliberate, plausible move toward the goal. "
-            "Don't be stingy — normal difficulty should be winnable in 10 "
-            "turns by a player who's paying attention."
+            "REWARD MEANINGFUL PROGRESS. Don't grant the objective on the "
+            "first declaration of intent — make the player work for it. "
+            "Set has_objective_item=true once they've made a deliberate "
+            "move toward the goal AND dealt with at least one obstacle, "
+            "enemy, or puzzle step. Normal difficulty should be winnable "
+            "by mid-game for a player who's paying attention."
         ),
     },
     "hard": {
@@ -106,10 +111,12 @@ DIFFICULTY_PROFILES = {
         "enemy_hp": (22, 36),
         "tone": "menacing",
         "max_turns": 12,
-        "scope": "complex — multiple areas, real obstacles between the player and the objective",
+        "min_objective_turn": 6,
+        "scope": "complex — multiple areas and real obstacles between the player and the objective",
         "objective_bias": (
-            "BE DEMANDING. Require the player to overcome a real obstacle "
-            "or piece something together before granting the objective. "
+            "BE DEMANDING. Require multiple steps: get to the right "
+            "location, deal with at least one obstacle or enemy, AND "
+            "execute a directly relevant action on the objective. "
             "Still allow a win within the turn budget for thoughtful, "
             "focused play."
         ),
@@ -119,10 +126,12 @@ DIFFICULTY_PROFILES = {
         "enemy_hp": (35, 55),
         "tone": "oppressive",
         "max_turns": 14,
+        "min_objective_turn": 8,
         "scope": "intricate — the objective is gated by significant obstacles, threats, and twists",
         "objective_bias": (
-            "BE BRUTAL. Only the most clever, multi-step approaches succeed. "
-            "Most attempts should fail. Victory is rare and earned."
+            "BE BRUTAL. Multiple obstacles must be overcome. Only the "
+            "most clever, multi-step approaches succeed. Victory is rare "
+            "and earned."
         ),
     },
 }
@@ -540,15 +549,22 @@ async def rule_enforcer_agent(
             "already acquired — focus on survival and any remaining "
             "narrative beats."
             if has_objective
-            else f"NOT yet acquired (turn {turn_count}/{max_turns}). "
-                 f"Objective-grant bias for this difficulty: "
-                 f"{objective_bias}"
+            else (
+                f"NOT yet acquired (turn {turn_count}/{max_turns}).\n"
+                f"  • MINIMUM-TURN FLOOR: do NOT grant the objective "
+                f"before turn {profile['min_objective_turn']}. If the "
+                f"current turn is below that, the player cannot win this "
+                f"turn no matter what they do toward the objective.\n"
+                f"  • Bias once past the floor: {objective_bias}"
+            )
         )
         + "\n\n"
         "Be fair but consequential. When the player attempts something "
-        "that plausibly recovers the objective item under the bias above, "
-        "set has_objective_item=true on the mutation. Never set it back "
-        "to false once true."
+        "that plausibly recovers the objective item under the bias above "
+        "(AND the minimum-turn floor has passed), set has_objective_item"
+        "=true on the mutation. Never set it back to false once true. "
+        "The game ends instantly in victory the moment has_objective_item "
+        "flips true, so don't grant it lightly."
     )
     user_msg = (
         f"Current world state:\n{json.dumps(state, indent=2)}\n\n"

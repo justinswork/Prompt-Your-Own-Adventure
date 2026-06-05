@@ -594,6 +594,11 @@ async def play_turn(req: TurnRequest, request: Request):
     if new_state["player_status"]["health"] <= 0:
         ended = True
         end_reason = "health"
+    elif new_state.get("has_objective_item"):
+        # Objective acquired → instant victory, regardless of remaining turns.
+        ended = True
+        end_reason = "objective"
+        victory = True
     elif new_state["player_status"]["turn_count"] >= max_turns:
         ended = True
         end_reason = "climax"
