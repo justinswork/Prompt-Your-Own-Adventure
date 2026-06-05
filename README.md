@@ -1,5 +1,7 @@
 # Prompt Your Own Adventure
 
+> **Status:** ✅ Complete. 2-week Gen AI class project, both weeks shipped. Live at https://rpg-engine-887701342599.us-central1.run.app/
+
 A model-routed random text RPG built around a real **agentic workflow** over the **Model Context Protocol (MCP)**. Three decoupled processes talk over actual wire protocols:
 
 ```
@@ -19,12 +21,12 @@ The **MCP server has zero LLM logic** — it's a strict rules / state engine exp
 - `initialize_game(genre, location, objective, starting_items, difficulty, starting_enemies, companion, max_turns)`
 - `mutate_world_state(health_change, add_items, remove_items, current_location, has_objective_item)`
 
-**Combat / world tools (week 2):**
+**Combat / world tools:**
 - `add_enemy(name, hp, location, threat, description)`
 - `damage_enemy(enemy_id, damage)`
 - `remove_enemy(enemy_id)`
 
-**Memory tool + Resource (week 2):**
+**Memory tool + Resource:**
 - `record_turn(turn, action, summary, narration_excerpt)` — orchestrator-only tool that appends a turn record to the history.
 - `world://turn-history` — the project's first **MCP Resource**. Exposes the per-turn history as JSON so the Narrator (or any external MCP client) can fetch it for tonal continuity and narrative callbacks. Resources are MCP's "readable data sources" primitive; this expands our protocol surface beyond Tools alone.
 
@@ -138,7 +140,7 @@ The command prints the public URL when it finishes (something like `https://rpg-
 - LLM API costs are paid out-of-band on your OpenAI/Anthropic accounts; Cloud Run itself stays in the free tier for typical usage.
 - To redeploy after a code change: re-run the same `gcloud run deploy` command. Cloud Build will rebuild and roll out.
 
-## Combat + difficulty (week 2)
+## Combat + difficulty
 
 The world now carries an `enemies` array and a `difficulty` setting (easy / normal / hard / nightmare), chosen on the setup screen. The scenario generator seeds the scene with appropriate creatures; the Rule Enforcer agent has three new MCP tools (`add_enemy`, `damage_enemy`, `remove_enemy`) it can chain together within a single turn to resolve combat. Concretely:
 
@@ -148,8 +150,18 @@ The world now carries an `enemies` array and a `difficulty` setting (easy / norm
 
 This was the highest-leverage week-2 change because it forces the agent to make multiple coordinated tool calls per turn instead of always exactly one — which is where the rubric word *agentic* actually starts to do work.
 
-## Future ideas (week 2 continued and beyond)
+## What was built
+
+Both weeks of the project are shipped:
+
+**Week 1** — three-tier architecture (browser → FastAPI orchestrator → FastMCP server), agentic Rule Enforcer with OpenAI function-calling tool-use loop, four-way model routing (gpt-4o-mini for fast structured work, swappable frontier model for narration), Cloud Run deployment, MCP Inspector pane, eval cases.
+
+**Week 2** — persistent enemies with combat, four difficulty levels with per-difficulty turn budgets and reliability profiles, a generated guide companion with chat (`gpt-4o-mini` grounded in current state), an intro-screen take/solo decision flow, animated end screen with stat-card grid, per-turn event pills interwoven with narration, paginated narration with per-turn state snapshots and a read-only review mode, and long-term narrative memory via an MCP Resource (`world://turn-history`) that the narrator pulls before each turn to weave callbacks.
+
+## Possible extensions (out of scope for this project)
+
+These are the directions a hypothetical "week 3" could go:
 
 - **A Director agent (multi-agent system).** A second agent that runs *between* player turns and decides what the world does — spawn an enemy, ratchet up tension, drop a hint about the objective, shift weather. Two LLM agents both driving MCP tools is the canonical multi-agent pattern.
-- **MCP Prompts.** We now use two of MCP's three primitives (Tools + Resources). Exposing the narrator persona / system instructions as a **Prompt** would round out the protocol surface fully.
+- **MCP Prompts.** We use two of MCP's three primitives (Tools + Resources). Exposing the narrator persona / system instructions as a **Prompt** would round out the protocol surface fully.
 - **NPCs with their own agents.** A `dialogue_with(npc_name)` tool that hands the conversation to a per-NPC agent. Each NPC has its own state (mood, knowledge, inventory) in `world_state.json`. Multi-agent storytelling on top of the existing infrastructure.
