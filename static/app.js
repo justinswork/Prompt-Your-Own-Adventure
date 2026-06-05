@@ -135,6 +135,17 @@ async function acceptScenario() {
     setCompanionPaneState("expanded");
     companionAutoDismissed = false;
     $("action-input").focus();
+
+    // If the autoplay box was already ticked (carried over from a prior
+    // game, or pre-set by the user), the change event won't fire on
+    // accept — kick off the first turn explicitly. Brief delay so the
+    // player can see the opening state and the companion's greeting
+    // before the bots take over.
+    if ($("cb-autoplay").checked) {
+      setTimeout(() => {
+        if ($("cb-autoplay").checked) autoAction();
+      }, 1200);
+    }
   } catch (e) {
     alert("Accept failed: " + e.message);
   } finally {
