@@ -374,13 +374,16 @@ function renderEnemies(enemies, currentLocation) {
   }
 }
 
-function appendNarration(turn, action, prose, fromAuto, events) {
+function appendNarration(turn, action, prose, fromAuto, events, state) {
   turnHistory.push({
     turn,
     action,
     prose,
     fromAuto: !!fromAuto,
     events: Array.isArray(events) ? events : [],
+    // Deep-clone the state so future mutations don't retroactively
+    // change what this turn's snapshot looks like.
+    state: state ? JSON.parse(JSON.stringify(state)) : null,
   });
   viewIndex = turnHistory.length - 1;
   renderCurrentTurn();
@@ -455,6 +458,11 @@ function renderCurrentTurn() {
       ${renderProseWithInlinePills(entry.prose, entry.events)}
     </div>`;
   display.scrollTop = 0;
+
+  // Sync the dashboard (HP, enemies, inventory, location, objective)
+  // to this turn's snapshot so navigating Prev/Next shows what the
+  // world looked like at that moment, not the current live state.
+  if (entry.state) renderState(entry.state);
 
   counter.textContent = `Turn ${entry.turn} of ${turnHistory.length}`;
   prev.disabled = viewIndex <= 0;
@@ -546,8 +554,9 @@ async function submitAction(action, opts = {}) {
     const turn = resp.state.player_status.turn_count;
 
     await streamTelemetry(resp.telemetry, turn);
-    renderState(resp.state);
-    appendNarration(turn, action, resp.narration, opts.fromAuto, resp.events);
+    // renderState is invoked from renderCurrentTurn using this turn's
+    // snapshot — that way Prev/Next navigation reflects historical state.
+    appendNarration(turn, action, resp.narration, opts.fromAuto, resp.events, resp.state);
 
     ended = resp.ended;
     if (ended) {
