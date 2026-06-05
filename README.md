@@ -39,6 +39,10 @@ The assignment called for *"an agentic workflow using tools, MCP, and model rout
 
 Open the **🔌 MCP pane** (right side of the page) and play any turn — you'll see the agent's per-iteration reasoning, each `tool_call` it emits, the matching `[MCP CLIENT]` / `[MCP SERVER]` JSON-RPC payloads going over the wire, and finally the narrator being routed in. The whole rubric is observable live.
 
+## Eval cases
+
+Concrete reference outputs for each LLM surface — what "good" looks like for scenario generation, the Rule Enforcer agent's tool-use loop, the companion's in-character Q&A, and the narrator's pill-marker placement — live in **[`EVALS.md`](EVALS.md)**. Each case has an input, a representative good output, and an annotation explaining the success criteria.
+
 ## Quickstart
 
 ```bash
