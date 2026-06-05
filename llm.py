@@ -313,8 +313,21 @@ def rule_enforcer(state: dict, action: str) -> dict:
     return json.loads(resp.choices[0].message.content)
 
 
-def narrate(model: str, state: dict, action: str, mutation: dict, turn: int) -> str:
-    """Route to a frontier model for vivid prose."""
+def narrate(
+    model: str,
+    state: dict,
+    action: str,
+    mutation: dict,
+    turn: int,
+    events: Optional[list[dict]] = None,
+) -> str:
+    """Route to a frontier model for vivid prose.
+
+    If `events` is provided, the narrator is asked to interleave
+    [[PILL N]] markers in the prose right after the sentence that
+    narratively describes each event. The frontend then renders these
+    as visible event pills inline with the text.
+    """
     system = (
         f"You are the Creative Narrator of a {state['genre']} text adventure. "
         "Your voice is vivid, atmospheric, in-genre, and tight. Show consequence "
@@ -323,11 +336,35 @@ def narrate(model: str, state: dict, action: str, mutation: dict, turn: int) -> 
         "paragraphs. End on a sensory beat that invites the next action."
     )
     max_turns = state.get("max_turns", 10)
+
+    events = events or []
+    events_block = ""
+    if events:
+        events_block = "\n\nMECHANICAL EVENTS THIS TURN (you MUST mark each in the prose):\n"
+        for i, e in enumerate(events):
+            label_bits = [e.get("label", "")]
+            if e.get("value"):
+                label_bits.append(f"— {e['value']}")
+            events_block += f"  [PILL {i}] {e.get('icon', '•')} {' '.join(label_bits).strip()}\n"
+        events_block += (
+            "\nINSERT a marker token of the form `[[PILL N]]` "
+            "(double square brackets, the literal word PILL, a space, "
+            "the index, double square brackets) IMMEDIATELY AFTER the "
+            "sentence that narratively describes that event. Each event "
+            "gets exactly ONE marker — no more, no less — and the markers "
+            "appear in the natural order of the narrative. The marker is "
+            "a UI hint; do NOT describe it in prose, just include the "
+            "literal token. Example: 'My blade catches the wraith square "
+            "in the chest, cleaving smoke. [[PILL 0]] It snarls back, "
+            "and a tendril of cold lashes my arm. [[PILL 1]]'"
+        )
+
     user = (
         f"Player just attempted: \"{action}\"\n\n"
         f"Mechanical resolution from the Rule Enforcer:\n{json.dumps(mutation, indent=2)}\n\n"
         f"Updated world state:\n{json.dumps(state, indent=2)}\n\n"
         f"Turn {turn} of {max_turns}. Write the narration now."
+        + events_block
     )
 
     if model in ANTHROPIC_MODELS or model.startswith("claude"):
@@ -463,20 +500,38 @@ async def rule_enforcer_agent(
         "  - damage_enemy(enemy_id, damage)          — attack an enemy\n"
         "  - remove_enemy(enemy_id)                  — despawn / flee\n\n"
         "Each turn you MUST:\n"
-        "  1. If the player attacks an enemy, call damage_enemy with "
-        "     appropriate damage. The enemy is auto-removed if its hp "
-        "     reaches 0.\n"
+        "  1. If — and ONLY IF — the player's action is an unambiguous "
+        "     combat attack against a specific enemy (verbs like "
+        "     'attack', 'strike', 'shoot', 'stab', 'cast at', 'throw "
+        "     at', 'punch', 'tackle'), call damage_enemy with appropriate "
+        "     damage on the targeted enemy. The enemy is auto-removed if "
+        "     its hp reaches 0.\n"
         "  2. If enemies are present and still alive after the player's "
         "     action, they retaliate — apply enemy damage to the player "
-        "     via mutate_world_state's health_change.\n"
+        "     via mutate_world_state's health_change (NEGATIVE int). "
+        "     This is the PLAYER taking damage, NOT the enemy.\n"
         "  3. If the player enters a new area or the difficulty "
-        "     warrants it, you MAY call add_enemy to spawn new threats.\n"
+        "     warrants it, you MAY call add_enemy to spawn new threats. "
+        "     ⚠️ CRITICAL: NEVER call add_enemy for a creature that "
+        "     already exists in state.enemies (see the list below). "
+        "     Check existing enemy names and locations BEFORE spawning. "
+        "     Only add genuinely NEW threats with new names. If the "
+        "     player is in a location that already has enemies, you "
+        "     usually do NOT need to spawn more.\n"
         "  4. Call mutate_world_state EXACTLY ONCE to commit the "
         "     player-state outcome (health_change, add_items, "
         "     remove_items, current_location, has_objective_item). "
         "     This is the only call that advances the turn counter.\n"
         "  5. After all tool calls, respond with ONE plain sentence "
         "     justifying your ruling — no further tool call.\n\n"
+        "CRITICAL — DO NOT CALL damage_enemy UNLESS:\n"
+        "  • The player's action is explicitly a combat attack, AND\n"
+        "  • There is a specific target enemy named or clearly implied.\n"
+        "Movement, exploration, dialogue, inventory checks, resting, "
+        "sneaking, hiding, examining, lighting torches, picking up "
+        "objects, climbing, reading, searching, or any non-combat action "
+        "MUST NOT damage enemies. If you're unsure whether the action "
+        "is a combat attack, DO NOT call damage_enemy.\n\n"
         f"DIFFICULTY: {difficulty} — {diff_note}\n\n"
         f"Enemies currently at player's location: "
         f"{json.dumps(enemies_here) if enemies_here else 'none'}\n\n"

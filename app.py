@@ -154,6 +154,113 @@ AGENT_TOOL_ALLOWLIST = {
 }
 
 
+def _extract_turn_events(
+    agent_result: dict,
+    state_before: dict,
+    state_after: dict,
+) -> list[dict]:
+    """Build the human-facing 'what happened this turn' event list that
+    the frontend renders as pills above the narration prose.
+
+    Walks the agent's tool calls (damage/spawn/remove enemy), the
+    mutate_world_state args (player damage, items, movement, objective),
+    and the before/after state diff (objective newly acquired) to produce
+    a compact, typed event list."""
+
+    events: list[dict] = []
+
+    before_enemies = {e["id"]: e for e in state_before.get("enemies", [])}
+    after_ids = {e["id"] for e in state_after.get("enemies", [])}
+
+    for it in agent_result.get("iterations", []):
+        for tc in it.get("tool_calls", []):
+            name = tc.get("name")
+            args = tc.get("args") or {}
+
+            if name == "damage_enemy":
+                eid = args.get("enemy_id", "")
+                dmg = int(args.get("damage", 0) or 0)
+                enemy_name = (before_enemies.get(eid, {}) or {}).get("name", "an enemy")
+                killed = eid not in after_ids
+                events.append({
+                    "type": "attack_out",
+                    "icon": "🗡️",
+                    "label": ("Defeated " if killed else "Attacked ") + enemy_name,
+                    "value": f"{dmg} dmg",
+                    "killed": killed,
+                })
+            elif name == "add_enemy":
+                events.append({
+                    "type": "spawn",
+                    "icon": "👹",
+                    "label": "New threat",
+                    "value": args.get("name", "?"),
+                })
+            elif name == "remove_enemy":
+                eid = args.get("enemy_id", "")
+                enemy_name = (before_enemies.get(eid, {}) or {}).get("name", "an enemy")
+                events.append({
+                    "type": "removed",
+                    "icon": "🌫️",
+                    "label": "Fled",
+                    "value": enemy_name,
+                })
+
+    mut_args = agent_result.get("mutate_args") or {}
+    hc = int(mut_args.get("health_change", 0) or 0)
+    if hc < 0:
+        events.append({
+            "type": "attack_in",
+            "icon": "💔",
+            "label": "Took damage",
+            "value": str(abs(hc)),
+        })
+    elif hc > 0:
+        events.append({
+            "type": "heal",
+            "icon": "💚",
+            "label": "Healed",
+            "value": f"+{hc}",
+        })
+
+    add_items = mut_args.get("add_items") or []
+    if add_items:
+        events.append({
+            "type": "item_gain",
+            "icon": "🎒",
+            "label": "Found",
+            "value": ", ".join(str(i) for i in add_items),
+        })
+
+    remove_items = mut_args.get("remove_items") or []
+    if remove_items:
+        events.append({
+            "type": "item_lose",
+            "icon": "📤",
+            "label": "Lost",
+            "value": ", ".join(str(i) for i in remove_items),
+        })
+
+    if mut_args.get("current_location"):
+        events.append({
+            "type": "move",
+            "icon": "🧭",
+            "label": "Moved",
+            "value": str(mut_args["current_location"]),
+        })
+
+    if (not state_before.get("has_objective_item")
+            and state_after.get("has_objective_item")):
+        events.append({
+            "type": "objective",
+            "icon": "🎯",
+            "label": "Objective acquired!",
+            "value": "",
+        })
+
+    return events
+
+
 def _mcp_to_openai_tools(tools_full: list[dict]) -> list[dict]:
     """Translate FastMCP tool schemas to OpenAI function-calling format."""
     out: list[dict] = []
@@ -469,10 +576,13 @@ async def play_turn(req: TurnRequest, request: Request):
     narrator_mutation.setdefault("intent_class", "agent")
     narrator_mutation.setdefault("reason", agent_result["final_text"])
 
+    events = _extract_turn_events(agent_result, state_before, new_state)
+
     try:
         prose = await asyncio.to_thread(
             narrate, narrator, new_state, req.action, narrator_mutation,
             new_state["player_status"]["turn_count"],
+            events,
         )
     except Exception as e:
         prose = f"(narration failed: {e})"
@@ -495,6 +605,7 @@ async def play_turn(req: TurnRequest, request: Request):
         "narration": prose,
         "narrator_model": narrator,
         "mutation": narrator_mutation,
+        "events": events,
         "agent": {
             "iterations": len(agent_result["iterations"]),
             "final_text": agent_result["final_text"],

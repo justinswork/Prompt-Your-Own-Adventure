@@ -374,10 +374,62 @@ function renderEnemies(enemies, currentLocation) {
   }
 }
 
-function appendNarration(turn, action, prose, fromAuto) {
-  turnHistory.push({ turn, action, prose, fromAuto: !!fromAuto });
+function appendNarration(turn, action, prose, fromAuto, events) {
+  turnHistory.push({
+    turn,
+    action,
+    prose,
+    fromAuto: !!fromAuto,
+    events: Array.isArray(events) ? events : [],
+  });
   viewIndex = turnHistory.length - 1;
   renderCurrentTurn();
+}
+
+function renderEventPillHTML(e) {
+  const valuePart = e.value
+    ? `<span class="pill-value">${escapeHtml(e.value)}</span>`
+    : "";
+  return `<span class="event-pill pill-${escapeHtml(e.type)}">
+    <span class="pill-icon">${e.icon || "•"}</span>
+    <span class="pill-label">${escapeHtml(e.label || "")}</span>
+    ${valuePart}
+  </span>`;
+}
+
+function renderProseWithInlinePills(prose, events) {
+  const safeEvents = Array.isArray(events) ? events : [];
+  if (!prose) return `<div class="prose"></div>`;
+
+  // Split on [[PILL N]] markers. The split keeps the index in odd slots.
+  const parts = String(prose).split(/\[\[PILL (\d+)\]\]/g);
+  const usedIndices = new Set();
+  const segments = [];
+
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) {
+      if (parts[i]) segments.push(escapeHtml(parts[i]));
+    } else {
+      const idx = parseInt(parts[i], 10);
+      if (Number.isInteger(idx) && idx >= 0 && idx < safeEvents.length) {
+        usedIndices.add(idx);
+        segments.push(renderEventPillHTML(safeEvents[idx]));
+      }
+    }
+  }
+
+  // Fallback: any events the narrator forgot to mark get appended at the end
+  const orphans = safeEvents
+    .map((e, i) => ({ e, i }))
+    .filter(({ i }) => !usedIndices.has(i));
+  let orphanBlock = "";
+  if (orphans.length > 0) {
+    orphanBlock = `<div class="event-pills event-pills-trailing">${
+      orphans.map(({ e }) => renderEventPillHTML(e)).join("")
+    }</div>`;
+  }
+
+  return `<div class="prose">${segments.join("")}</div>${orphanBlock}`;
 }
 
 function renderCurrentTurn() {
@@ -400,7 +452,7 @@ function renderCurrentTurn() {
     <div class="turn-entry appear">
       <div class="turn-tag">Turn ${entry.turn}${autoBadge}</div>
       <div class="action">› ${escapeHtml(entry.action)}</div>
-      <div class="prose">${escapeHtml(entry.prose)}</div>
+      ${renderProseWithInlinePills(entry.prose, entry.events)}
     </div>`;
   display.scrollTop = 0;
 
@@ -495,7 +547,7 @@ async function submitAction(action, opts = {}) {
 
     await streamTelemetry(resp.telemetry, turn);
     renderState(resp.state);
-    appendNarration(turn, action, resp.narration, opts.fromAuto);
+    appendNarration(turn, action, resp.narration, opts.fromAuto, resp.events);
 
     ended = resp.ended;
     if (ended) {

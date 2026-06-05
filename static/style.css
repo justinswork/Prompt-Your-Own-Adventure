@@ -617,6 +617,74 @@ input[type="text"]:focus, select:focus { outline: 2px solid var(--accent); outli
 }
 #narration-display .turn-entry .prose { white-space: pre-wrap; }
 
+/* Per-turn event pills — interleaved with the narration prose */
+.event-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.event-pills-trailing {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.event-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  line-height: 1.4;
+  /* Inline pills sit on the baseline with surrounding prose */
+  vertical-align: middle;
+  margin: 0 3px;
+  white-space: nowrap;
+}
+.event-pill .pill-icon { font-size: 13px; line-height: 1; }
+.event-pill .pill-label { font-weight: 600; color: var(--text); }
+.event-pill .pill-value {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding-left: 2px;
+  border-left: 1px solid var(--border);
+}
+
+/* Per-type color accents — subtle border + colored label */
+.pill-attack_out  { border-color: rgba(74, 222, 128, 0.5); }
+.pill-attack_out .pill-label { color: var(--accent-2); }
+
+.pill-attack_in   { border-color: rgba(248, 81, 73, 0.5); }
+.pill-attack_in .pill-label { color: var(--danger); }
+
+.pill-heal        { border-color: rgba(74, 222, 128, 0.5); }
+.pill-heal .pill-label { color: var(--accent-2); }
+
+.pill-spawn       { border-color: rgba(240, 136, 62, 0.5); }
+.pill-spawn .pill-label { color: var(--warn); }
+
+.pill-removed     { border-color: var(--gray); }
+.pill-removed .pill-label { color: var(--muted); }
+
+.pill-item_gain   { border-color: rgba(74, 222, 128, 0.4); }
+.pill-item_gain .pill-label { color: var(--accent-2); }
+
+.pill-item_lose   { border-color: rgba(240, 136, 62, 0.5); }
+.pill-item_lose .pill-label { color: var(--warn); }
+
+.pill-move        { border-color: rgba(88, 166, 255, 0.5); }
+.pill-move .pill-label { color: var(--accent); }
+
+.pill-objective {
+  background: rgba(74, 222, 128, 0.15);
+  border-color: var(--accent-2);
+  padding: 4px 12px;
+}
+.pill-objective .pill-label { color: var(--accent-2); font-weight: 700; }
+
 #telemetry-log {
   font-family: var(--mono);
   font-size: 12.5px;
