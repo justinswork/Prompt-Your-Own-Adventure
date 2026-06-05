@@ -9,6 +9,7 @@
   "inventory": [],
   "has_objective_item": false,
   "difficulty": "normal",
+  "max_turns": 10,
   "enemies": [],
   "companion": {
     "name": "",

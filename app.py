@@ -138,6 +138,7 @@ async def mcp_initialize_game(
         "objective": scenario["objective"],
         "starting_items": scenario["starting_items"],
         "difficulty": scenario.get("difficulty", "normal"),
+        "max_turns": int(scenario.get("max_turns", 10)),
         "starting_enemies": scenario.get("starting_enemies", []),
         "companion": scenario.get("companion") or {},
     }
@@ -280,6 +281,7 @@ class Scenario(BaseModel):
     objective: str
     starting_items: list[str]
     difficulty: str = "normal"
+    max_turns: int = 10
     starting_enemies: list[Enemy] = []
     companion: Companion = Companion()
 
@@ -478,10 +480,11 @@ async def play_turn(req: TurnRequest, request: Request):
     ended = False
     victory = False
     end_reason = ""
+    max_turns = int(new_state.get("max_turns", 10))
     if new_state["player_status"]["health"] <= 0:
         ended = True
         end_reason = "health"
-    elif new_state["player_status"]["turn_count"] >= 10:
+    elif new_state["player_status"]["turn_count"] >= max_turns:
         ended = True
         end_reason = "climax"
         victory = bool(new_state.get("has_objective_item"))

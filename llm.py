@@ -78,19 +78,21 @@ DIFFICULTY_PROFILES = {
         "starting_enemies": (0, 1),
         "enemy_hp": (6, 14),
         "tone": "light",
+        "max_turns": 10,
         "scope": "small and local — the objective item is in or right next to the starting location, reachable within 2-4 turns of focused play",
         "objective_bias": (
             "GENEROUS. Grant has_objective_item=true on the FIRST genuinely "
             "plausible attempt to acquire or even APPROACH the objective. "
             "If by turn 4 the player still hasn't acquired it, lean harder "
             "toward granting it on any reasonable progress-related action. "
-            "Easy-mode players should reliably win in 10 turns."
+            "Easy-mode players should reliably win in their turn budget."
         ),
     },
     "normal": {
         "starting_enemies": (1, 2),
         "enemy_hp": (12, 22),
         "tone": "tense",
+        "max_turns": 10,
         "scope": "modest — the objective is achievable by exploring 1-2 nearby areas",
         "objective_bias": (
             "REWARD CLEAR ATTEMPTS. Set has_objective_item=true when the "
@@ -103,17 +105,20 @@ DIFFICULTY_PROFILES = {
         "starting_enemies": (2, 3),
         "enemy_hp": (22, 36),
         "tone": "menacing",
+        "max_turns": 12,
         "scope": "complex — multiple areas, real obstacles between the player and the objective",
         "objective_bias": (
             "BE DEMANDING. Require the player to overcome a real obstacle "
             "or piece something together before granting the objective. "
-            "Still allow a win within 10 turns for thoughtful, focused play."
+            "Still allow a win within the turn budget for thoughtful, "
+            "focused play."
         ),
     },
     "nightmare": {
         "starting_enemies": (3, 4),
         "enemy_hp": (35, 55),
         "tone": "oppressive",
+        "max_turns": 14,
         "scope": "intricate — the objective is gated by significant obstacles, threats, and twists",
         "objective_bias": (
             "BE BRUTAL. Only the most clever, multi-step approaches succeed. "
@@ -152,6 +157,7 @@ def generate_scenario(difficulty: str = "normal") -> dict:
     profile = DIFFICULTY_PROFILES.get(difficulty, DIFFICULTY_PROFILES["normal"])
     n_low, n_high = profile["starting_enemies"]
     hp_low, hp_high = profile["enemy_hp"]
+    max_turns = profile["max_turns"]
 
     system = (
         "You are a high-variance random scenario seed generator for a "
@@ -218,8 +224,8 @@ def generate_scenario(difficulty: str = "normal") -> dict:
         f"The companion's helpfulness profile for '{difficulty}' "
         f"difficulty: {helpfulness}\n\n"
         f"OBJECTIVE SCOPE: {profile['scope']}. Calibrate the objective "
-        f"accordingly — it must be achievable within the 10-turn budget at "
-        f"this difficulty.\n\n"
+        f"accordingly — it must be achievable within the "
+        f"{max_turns}-turn budget at this difficulty.\n\n"
         f"On easy mode include 0–1 weak enemies, on nightmare include "
         f"3–4 deadly ones. Match enemies and companion thematically to "
         f"the genre."
@@ -267,6 +273,7 @@ def generate_scenario(difficulty: str = "normal") -> dict:
     }
 
     data["difficulty"] = difficulty
+    data["max_turns"] = max_turns
     return data
 
 
@@ -315,11 +322,12 @@ def narrate(model: str, state: dict, action: str, mutation: dict, turn: int) -> 
         "wall. Never mention 'turn', 'health points', or game mechanics. 2–4 short "
         "paragraphs. End on a sensory beat that invites the next action."
     )
+    max_turns = state.get("max_turns", 10)
     user = (
         f"Player just attempted: \"{action}\"\n\n"
         f"Mechanical resolution from the Rule Enforcer:\n{json.dumps(mutation, indent=2)}\n\n"
         f"Updated world state:\n{json.dumps(state, indent=2)}\n\n"
-        f"Turn {turn} of 10. Write the narration now."
+        f"Turn {turn} of {max_turns}. Write the narration now."
     )
 
     if model in ANTHROPIC_MODELS or model.startswith("claude"):
@@ -441,6 +449,7 @@ async def rule_enforcer_agent(
     objective_bias = profile["objective_bias"]
     has_objective = bool(state.get("has_objective_item"))
     turn_count = state.get("player_status", {}).get("turn_count", 0)
+    max_turns = state.get("max_turns", profile["max_turns"])
 
     system = (
         "You are the Rule Enforcer agent for a turn-based text RPG.\n\n"
@@ -476,7 +485,7 @@ async def rule_enforcer_agent(
             "already acquired — focus on survival and any remaining "
             "narrative beats."
             if has_objective
-            else f"NOT yet acquired (turn {turn_count}/10). "
+            else f"NOT yet acquired (turn {turn_count}/{max_turns}). "
                  f"Objective-grant bias for this difficulty: "
                  f"{objective_bias}"
         )
@@ -665,7 +674,7 @@ def companion_respond(
         f"  Objective: {state.get('objective', '?')}\n"
         f"  Inventory: {', '.join(state.get('inventory', [])) or '(empty)'}\n"
         f"  Health:    {state.get('player_status', {}).get('health', '?')}/100\n"
-        f"  Turn:      {state.get('player_status', {}).get('turn_count', 0)}/10\n"
+        f"  Turn:      {state.get('player_status', {}).get('turn_count', 0)}/{state.get('max_turns', 10)}\n"
         f"  Enemies present: "
         f"{json.dumps(state.get('enemies', []))}\n\n"
         "RULES:\n"

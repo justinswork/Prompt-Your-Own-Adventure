@@ -308,6 +308,7 @@ function renderState(state) {
   const hpPct = Math.max(0, Math.min(100, (hp / hpMax) * 100));
   $("hp-bar-fill").style.width = hpPct + "%";
   $("turn").textContent = state.player_status.turn_count;
+  $("max-turns").textContent = state.max_turns || 10;
   $("location").textContent = state.current_location;
   $("genre").textContent = state.genre;
   const objEl = $("objective");
@@ -743,7 +744,7 @@ function renderEndStatCards(state, narratorModel, victory) {
     {
       icon: "⏱",
       label: "Turns Survived",
-      value: `${turns} / 10`,
+      value: `${turns} / ${state.max_turns || 10}`,
     },
     {
       icon: "🎯",
