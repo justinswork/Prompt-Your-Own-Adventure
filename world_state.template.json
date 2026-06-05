@@ -11,6 +11,7 @@
   "difficulty": "normal",
   "max_turns": 10,
   "enemies": [],
+  "turn_history": [],
   "companion": {
     "name": "",
     "persona": "",

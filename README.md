@@ -12,17 +12,21 @@ Per turn, the orchestrator routes between two LLMs:
 - **Rule Enforcer agent** (`gpt-4o-mini`) — runs an OpenAI function-calling tool-use loop, autonomously invoking MCP tools (`get_world_state`, `mutate_world_state`) until it has resolved the player's action
 - **Narrator** (`claude-sonnet-4-6` by default, hot-swappable) — frontier model that turns the mutated state into vivid in-genre prose
 
-The **MCP server has zero LLM logic** — it's a strict rules / state engine exposing six tools:
+The **MCP server has zero LLM logic** — it's a strict rules / state engine exposing seven tools and one resource:
 
-State / player tools:
+**State / player tools:**
 - `get_world_state()`
-- `initialize_game(genre, location, objective, starting_items, difficulty, starting_enemies)`
+- `initialize_game(genre, location, objective, starting_items, difficulty, starting_enemies, companion, max_turns)`
 - `mutate_world_state(health_change, add_items, remove_items, current_location, has_objective_item)`
 
-Combat / world tools (added in week 2):
+**Combat / world tools (week 2):**
 - `add_enemy(name, hp, location, threat, description)`
 - `damage_enemy(enemy_id, damage)`
 - `remove_enemy(enemy_id)`
+
+**Memory tool + Resource (week 2):**
+- `record_turn(turn, action, summary, narration_excerpt)` — orchestrator-only tool that appends a turn record to the history.
+- `world://turn-history` — the project's first **MCP Resource**. Exposes the per-turn history as JSON so the Narrator (or any external MCP client) can fetch it for tonal continuity and narrative callbacks. Resources are MCP's "readable data sources" primitive; this expands our protocol surface beyond Tools alone.
 
 Only `mutate_world_state` advances the turn counter, so the agent can freely chain multiple combat tool calls within a single turn.
 
@@ -147,6 +151,5 @@ This was the highest-leverage week-2 change because it forces the agent to make 
 ## Future ideas (week 2 continued and beyond)
 
 - **A Director agent (multi-agent system).** A second agent that runs *between* player turns and decides what the world does — spawn an enemy, ratchet up tension, drop a hint about the objective, shift weather. Two LLM agents both driving MCP tools is the canonical multi-agent pattern.
-- **Long-term narrative memory.** Right now the Narrator sees only the current turn's mutation. Adding a turn-by-turn history (as an MCP Resource or a `get_turn_history()` tool) would let it weave callbacks to earlier events and maintain tonal consistency across the 10-turn arc.
-- **MCP Resources and Prompts.** Today we only use one of MCP's three primitives (Tools). Exposing the world state as a Resource (`world://state`) and the narrator persona as a Prompt would round out the protocol surface and demonstrate full coverage.
+- **MCP Prompts.** We now use two of MCP's three primitives (Tools + Resources). Exposing the narrator persona / system instructions as a **Prompt** would round out the protocol surface fully.
 - **NPCs with their own agents.** A `dialogue_with(npc_name)` tool that hands the conversation to a per-NPC agent. Each NPC has its own state (mood, knowledge, inventory) in `world_state.json`. Multi-agent storytelling on top of the existing infrastructure.

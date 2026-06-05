@@ -38,6 +38,7 @@ def _read_state() -> dict:
     state.setdefault("difficulty", "normal")
     state.setdefault("enemies", [])
     state.setdefault("max_turns", 10)
+    state.setdefault("turn_history", [])
     state.setdefault("companion", {
         "name": "", "persona": "", "avatar": "", "intro": ""
     })
@@ -122,6 +123,7 @@ def initialize_game(
             "difficulty": difficulty,
             "max_turns": int(max_turns),
             "enemies": [],
+            "turn_history": [],
             "companion": {
                 "name": str((companion or {}).get("name", "")),
                 "persona": str((companion or {}).get("persona", "")),
@@ -301,6 +303,63 @@ def remove_enemy(enemy_id: str) -> dict:
         ]
         _write_state(state)
         return state
+
+
+@mcp.tool()
+def record_turn(
+    turn: int,
+    action: str,
+    summary: str = "",
+    narration_excerpt: str = "",
+) -> dict:
+    """
+    Append a compact record of the just-finished turn to turn_history.
+
+    Called by the orchestrator AFTER narration completes so the Narrator
+    on subsequent turns can read the world://turn-history resource and
+    weave callbacks to earlier events. Does NOT increment turn_count.
+
+    Args:
+        turn: The turn number this record represents (post-mutate value).
+        action: The player's action verbatim (what they typed / picked).
+        summary: One-line mechanical summary of the turn's outcomes
+            (e.g. "Attacked Wraith for 9 dmg; took 7 damage; moved to
+            Crypt Antechamber"). Derived from the event list.
+        narration_excerpt: Short prose excerpt — typically the first
+            sentence or two of the narration — used to give the Narrator
+            tonal continuity hooks.
+
+    Returns the full updated world state, including the just-appended
+    turn_history entry.
+    """
+    with _file_lock:
+        state = _read_state()
+        state.setdefault("turn_history", []).append({
+            "turn": int(turn),
+            "action": str(action),
+            "summary": str(summary),
+            "narration_excerpt": str(narration_excerpt),
+        })
+        _write_state(state)
+        return state
+
+
+@mcp.resource("world://turn-history")
+def turn_history_resource() -> str:
+    """
+    The full per-turn history of this playthrough, as JSON.
+
+    Exposed as an MCP **Resource** (not a Tool) — this is the protocol's
+    way of saying "here's a readable data source that any MCP client can
+    subscribe to or fetch on demand." The orchestrator reads it before
+    each narration so the Narrator can reference earlier events for
+    tonal consistency and narrative callbacks. Any other MCP-aware
+    client (Claude Desktop, IDE plugins, etc.) could read this same
+    URI and get the same data.
+    """
+    with _file_lock:
+        state = _read_state()
+        return json.dumps(state.get("turn_history", []), indent=2)
 
 
 if __name__ == "__main__":

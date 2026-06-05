@@ -346,6 +346,7 @@ def narrate(
     mutation: dict,
     turn: int,
     events: Optional[list[dict]] = None,
+    recent_turns: Optional[list[dict]] = None,
 ) -> str:
     """Route to a frontier model for vivid prose.
 
@@ -353,6 +354,11 @@ def narrate(
     [[PILL N]] markers in the prose right after the sentence that
     narratively describes each event. The frontend then renders these
     as visible event pills inline with the text.
+
+    If `recent_turns` is provided (fetched from the world://turn-history
+    MCP Resource), the narrator gets a compact summary of earlier turns
+    so it can weave callbacks ("the wraith you struck two turns ago...")
+    and maintain tonal consistency across the arc.
     """
     system = (
         f"You are the Creative Narrator of a {state['genre']} text adventure. "
@@ -386,12 +392,32 @@ def narrate(
             "and a tendril of cold lashes my arm. [[PILL 1]]'"
         )
 
+    history_block = ""
+    if recent_turns:
+        history_block = (
+            "\n\nEARLIER IN THIS ADVENTURE — for tonal continuity and "
+            "narrative callbacks. Reference these only when natural; "
+            "don't list them:\n"
+        )
+        for t in recent_turns:
+            tnum = t.get("turn", "?")
+            t_action = t.get("action", "")
+            t_summary = t.get("summary", "")
+            t_excerpt = t.get("narration_excerpt", "")
+            history_block += (
+                f"  • Turn {tnum} — player tried: \"{t_action}\"\n"
+                f"    outcome: {t_summary}\n"
+            )
+            if t_excerpt:
+                history_block += f"    prose tone: \"{t_excerpt}\"\n"
+
     user = (
         f"Player just attempted: \"{action}\"\n\n"
         f"Mechanical resolution from the Rule Enforcer:\n{json.dumps(mutation, indent=2)}\n\n"
         f"Updated world state:\n{json.dumps(_state_for_game(state), indent=2)}\n\n"
         f"Turn {turn} of {max_turns}. Write the narration now.\n\n"
         f"{_COMPANION_META_NOTE}"
+        + history_block
         + events_block
     )
 

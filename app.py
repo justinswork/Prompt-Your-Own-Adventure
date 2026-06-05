@@ -129,6 +129,26 @@ async def mcp_get_world_state(session: ClientSession, recent_calls) -> dict:
     return await _recorded_call(session, recent_calls, "get_world_state", {})
 
 
+async def mcp_read_turn_history(session: ClientSession) -> list:
+    """Read the world://turn-history MCP Resource and return its contents
+    as a list. Returns [] if the resource is unavailable or empty."""
+    try:
+        result = await session.read_resource("world://turn-history")
+    except Exception:
+        return []
+    contents = getattr(result, "contents", None) or []
+    for c in contents:
+        text = getattr(c, "text", None)
+        if text:
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+    return []
+
+
 async def mcp_initialize_game(
     session: ClientSession, recent_calls, scenario: dict
 ) -> dict:
@@ -578,14 +598,43 @@ async def play_turn(req: TurnRequest, request: Request):
 
     events = _extract_turn_events(agent_result, state_before, new_state)
 
+    # Pull turn history from the MCP Resource so the narrator can weave
+    # callbacks and maintain tonal continuity across the arc.
+    history = await mcp_read_turn_history(mcp)
+
     try:
         prose = await asyncio.to_thread(
             narrate, narrator, new_state, req.action, narrator_mutation,
             new_state["player_status"]["turn_count"],
             events,
+            history,
         )
     except Exception as e:
         prose = f"(narration failed: {e})"
+
+    # Record this turn back to the MCP server so the next turn's
+    # narrator can read it via the resource. We summarize events
+    # into a single line and grab a prose excerpt for tonal hooks.
+    turn_no = new_state["player_status"]["turn_count"]
+    summary_bits: list[str] = []
+    for ev in events:
+        label = ev.get("label", "")
+        value = ev.get("value", "")
+        summary_bits.append(f"{label}{(' ' + value) if value else ''}")
+    summary = "; ".join(summary_bits) or "(uneventful turn)"
+    excerpt = (prose or "").strip().split("\n")[0][:240]
+    try:
+        await _recorded_call(
+            mcp, recent_calls, "record_turn", {
+                "turn": turn_no,
+                "action": req.action,
+                "summary": summary,
+                "narration_excerpt": excerpt,
+            },
+        )
+    except Exception as e:  # noqa: BLE001
+        # Recording is best-effort — never let it break the turn.
+        print(f"[record_turn] failed: {e}", file=sys.stderr)
 
     ended = False
     victory = False
