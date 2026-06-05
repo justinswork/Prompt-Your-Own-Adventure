@@ -71,6 +71,23 @@ def _ensure_anthropic() -> Anthropic:
     return _anthropic_client
 
 
+# Game-world LLMs (Rule Enforcer, Narrator, action generators) must NOT
+# see the companion field. The companion is a meta-layer dialogue partner
+# the player talks to outside the narrative — they are not a character
+# in the game world. Pass state through this helper before serializing.
+_COMPANION_META_NOTE = (
+    "NOTE: The companion (the player's guide) is a META-LAYER HELPER, "
+    "NOT a character in the game world. They speak to the player "
+    "outside the narrative, like a voice in their head. NEVER reference "
+    "the companion in your reasoning, narration, or tool calls. As far "
+    "as the game's reality is concerned, the companion does not exist."
+)
+
+
+def _state_for_game(state: dict) -> dict:
+    return {k: v for k, v in (state or {}).items() if k != "companion"}
+
+
 # ---------- LLM calls ---------------------------------------------------------
 
 DIFFICULTY_PROFILES = {
@@ -299,7 +316,7 @@ def rule_enforcer(state: dict, action: str) -> dict:
         "find or acquire the objective item, set has_objective_item=true."
     )
     user = (
-        f"Current world state:\n{json.dumps(state, indent=2)}\n\n"
+        f"Current world state:\n{json.dumps(_state_for_game(state), indent=2)}\n\n"
         f'Player action: "{action}"\n\n'
         "Respond with JSON ONLY containing exactly these keys:\n"
         '  "health_change": signed int (negative=damage, positive=heal, 0=neutral)\n'
@@ -342,7 +359,8 @@ def narrate(
         "Your voice is vivid, atmospheric, in-genre, and tight. Show consequence "
         "through sensory detail rather than listing stats. Never break the fourth "
         "wall. Never mention 'turn', 'health points', or game mechanics. 2–4 short "
-        "paragraphs. End on a sensory beat that invites the next action."
+        "paragraphs. End on a sensory beat that invites the next action.\n\n"
+        f"{_COMPANION_META_NOTE}"
     )
     max_turns = state.get("max_turns", 10)
 
@@ -371,8 +389,9 @@ def narrate(
     user = (
         f"Player just attempted: \"{action}\"\n\n"
         f"Mechanical resolution from the Rule Enforcer:\n{json.dumps(mutation, indent=2)}\n\n"
-        f"Updated world state:\n{json.dumps(state, indent=2)}\n\n"
-        f"Turn {turn} of {max_turns}. Write the narration now."
+        f"Updated world state:\n{json.dumps(_state_for_game(state), indent=2)}\n\n"
+        f"Turn {turn} of {max_turns}. Write the narration now.\n\n"
+        f"{_COMPANION_META_NOTE}"
         + events_block
     )
 
@@ -421,7 +440,8 @@ def generate_action(state: dict) -> str:
         "current location and inventory."
     )
     user = (
-        f"Current world state:\n{json.dumps(state, indent=2)}\n\n"
+        f"Current world state:\n{json.dumps(_state_for_game(state), indent=2)}\n\n"
+        f"{_COMPANION_META_NOTE}\n\n"
         "Respond with JSON ONLY: {\"action\": \"your action here\"}"
     )
     resp = client.chat.completions.create(
@@ -499,6 +519,7 @@ async def rule_enforcer_agent(
 
     system = (
         "You are the Rule Enforcer agent for a turn-based text RPG.\n\n"
+        f"{_COMPANION_META_NOTE}\n\n"
         "You have access to MCP tools that read and mutate the live "
         "game world over the wire. Resolve the player's action by "
         "CALLING those tools — do not just describe outcomes.\n\n"
@@ -567,7 +588,7 @@ async def rule_enforcer_agent(
         "flips true, so don't grant it lightly."
     )
     user_msg = (
-        f"Current world state:\n{json.dumps(state, indent=2)}\n\n"
+        f"Current world state:\n{json.dumps(_state_for_game(state), indent=2)}\n\n"
         f'Player action: "{action}"\n\n'
         "Resolve this turn by invoking the appropriate MCP tool(s)."
     )
@@ -689,7 +710,8 @@ def generate_action_suggestions(state: dict) -> list[str]:
         "    one bolder/riskier (combat, gambit, social ask)"
     )
     user = (
-        f"Current world state:\n{json.dumps(state, indent=2)}\n\n"
+        f"Current world state:\n{json.dumps(_state_for_game(state), indent=2)}\n\n"
+        f"{_COMPANION_META_NOTE}\n\n"
         "Respond with JSON ONLY: "
         "{\"suggestions\": [\"action 1\", \"action 2\", \"action 3\"]}"
     )
