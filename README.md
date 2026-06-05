@@ -78,10 +78,13 @@ Either way, open <http://127.0.0.1:8000>.
 
 ## Wow-factor controls
 
-- **🔌 MCP Inspector** (top-right of the page) — live snapshot of the MCP connection: server URL, transport, discovered tool schemas (pulled from `tools/list`), a manual tool-invoker that calls any tool with arbitrary JSON args, and a recent-call history with roundtrip times.
-- **`/swap` narrator dropdown** — hot-swap the Narrator LLM mid-game (Claude Sonnet 4.6 → GPT-4o → Claude Opus 4.7 → …) without restarting anything. Demonstrates that the architecture really is modular.
-- **🎲 Choose for me / Auto-play** — let the router model pick player actions so you can watch the whole pipeline run hands-off.
-- **Telemetry pane** — every turn streams `[MODEL ROUTER]` / `[MCP CLIENT]` / `[MCP SERVER]` events with raw JSON-RPC payloads.
+- **Generated AI companion** — Every adventure spawns a unique NPC guide: themed avatar, name, persona, and a calibrated reliability score (1–10, shown as a colored chip) tied to difficulty. They greet you on a dedicated intro screen with an in-character welcome that names the setting, restates the objective in their voice, and acknowledges how trustworthy they'll be. From the game screen, click the rail on the left edge to summon them and ask anything about your current world, inventory items, threats, or what to try next. They answer in-character via a per-question LLM call grounded in actual state. Their voice shifts dramatically by difficulty: warm and direct on easy, theatrical and outright unreliable on nightmare.
+- **🔌 MCP Inspector** (collapsible right-side pane) — live snapshot of the MCP connection: server URL, transport, discovered tool schemas (pulled from `tools/list`), recent call history with roundtrip times, and a manual tool-invoker that lets you call any tool with arbitrary JSON args. Proves the protocol is real and observable.
+- **`/swap` narrator dropdown** — hot-swap the Narrator LLM mid-game (Claude Sonnet 4.6 → GPT-4o → Claude Opus 4.7 → Haiku 4.5 → …) without restarting anything. Model routing as a player-facing control.
+- **Per-turn event pills inline with narration** — the Narrator embeds `[[PILL N]]` markers in its prose at the moment each event happens; the frontend parses them and renders compact colored chips (`🗡️ Attacked Wraith · 9 dmg`, `💔 Took damage · 7`, `🎯 Objective acquired!`) right after the sentence that describes that beat. The LLM and the UI cooperate to make mechanics visible without breaking the story.
+- **Long-term narrative memory via MCP Resource** — each turn's outcomes are recorded back to the MCP server. The Narrator on subsequent turns pulls the history via `world://turn-history` (the project's first MCP **Resource**, not another Tool) and weaves natural callbacks to earlier events.
+- **🎲 Choose for me / Auto-play** — let the router model pick player actions, optionally chained on a loop, so you can watch the whole pipeline (agent tool-use → mutation → narration → companion availability) play out hands-off.
+- **Live telemetry pane** — every turn streams `[MODEL ROUTER]` / `[AGENT iter N]` / `[MCP CLIENT]` / `[MCP SERVER]` events with raw JSON-RPC payloads, color-coded by stage.
 
 ## When does this architecture actually make sense?
 
