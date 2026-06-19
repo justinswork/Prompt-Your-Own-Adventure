@@ -33,7 +33,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -381,6 +381,25 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Prompt Your Own Adventure", lifespan=lifespan)
 
+
+# Hard cap on request body size. Anything bigger gets a 413 before
+# Pydantic / our handlers even see it. 16 KB is more than enough for
+# the largest legitimate request (turn submission, companion ask with
+# 30 short history entries).
+MAX_BODY_BYTES = 16 * 1024
+
+
+@app.middleware("http")
+async def _limit_request_size(request: Request, call_next):
+    cl = request.headers.get("content-length")
+    if cl and cl.isdigit() and int(cl) > MAX_BODY_BYTES:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            {"detail": f"request body too large (>{MAX_BODY_BYTES} bytes)"},
+            status_code=413,
+        )
+    return await call_next(request)
+
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -414,25 +433,31 @@ class Scenario(BaseModel):
 
 
 class ScenarioRequest(BaseModel):
-    difficulty: str = "normal"
+    difficulty: str = Field(default="normal", max_length=20)
 
 
 class TurnRequest(BaseModel):
-    action: str
+    # 500 chars is comfortably more than any reasonable text-adventure
+    # action ("attack the wraith with my silver dagger from behind") but
+    # bounded enough to keep prompt-injection / cost-burn attacks small.
+    action: str = Field(..., min_length=1, max_length=500)
 
 
 class SwapRequest(BaseModel):
-    model: str
+    model: str = Field(..., max_length=80)
 
 
 class CompanionMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
+    role: str = Field(..., max_length=20)
+    content: str = Field(..., max_length=2000)
 
 
 class CompanionAskRequest(BaseModel):
-    question: str
-    history: list[CompanionMessage] = []
+    question: str = Field(..., min_length=1, max_length=500)
+    # Cap conversation replay so a malicious client can't smuggle in a
+    # giant injected "history" to balloon token cost or jailbreak the
+    # companion's system prompt.
+    history: list[CompanionMessage] = Field(default_factory=list, max_length=30)
 
 
 # ---------- Routes -------------------------------------------------------------
@@ -734,8 +759,17 @@ async def climax(request: Request):
 # ---------- MCP Inspector ------------------------------------------------------
 
 class McpCallRequest(BaseModel):
-    tool: str
-    args: dict[str, Any] = {}
+    tool: str = Field(..., max_length=80)
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+# Tools the public inspector pane is allowed to invoke. Read-only by
+# default — exposing initialize_game / mutate_world_state / add_enemy /
+# damage_enemy / remove_enemy / record_turn here would let any visitor
+# wipe or corrupt the active game (which lives in single global state).
+# Mutating tools are still callable by the orchestrator's own code path;
+# only the public manual invoker is restricted.
+INSPECTOR_PUBLIC_TOOLS = {"get_world_state"}
 
 
 @app.get("/api/mcp-inspect")
@@ -755,9 +789,23 @@ async def mcp_inspect(request: Request):
 
 @app.post("/api/mcp-call")
 async def mcp_call(req: McpCallRequest, request: Request):
-    """Manually invoke any discovered MCP tool with arbitrary JSON args.
-    Lets a grader poke the server through the same protocol the
-    orchestrator uses — proves it's a real MCP service, not a sham."""
+    """Manually invoke an MCP tool from the public Inspector pane.
+
+    Restricted to a read-only allowlist (INSPECTOR_PUBLIC_TOOLS) so a
+    visitor poking at a public Cloud Run deployment can't wipe or
+    corrupt the active game by calling initialize_game or
+    mutate_world_state. The full tool list is still discoverable via
+    /api/mcp-inspect — only invocation is gated.
+    """
+    if req.tool not in INSPECTOR_PUBLIC_TOOLS:
+        return {
+            "ok": False,
+            "error": (
+                f"tool '{req.tool}' is not invokable from the public "
+                f"inspector. Allowed: {sorted(INSPECTOR_PUBLIC_TOOLS)}. "
+                f"Mutating tools are restricted to the orchestrator."
+            ),
+        }
     mcp: ClientSession = request.app.state.mcp
     recent_calls = request.app.state.recent_calls
     try:
